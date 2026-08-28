@@ -11,7 +11,7 @@ export const FORMAT = '{plan};;{session_pct};;{session_reset};;{weekly_pct};;{we
     '{scoped_model};;{scoped_pct};;{scoped_reset};;' +
     '{session_elapsed};;{weekly_elapsed};;{scoped_elapsed};;{vendor_short};;' +
     '{extra_model};;{extra_reset};;{extra_elapsed};;' +
-    '{session_model};;{weekly_model};;__aiub_end__';
+    '{session_model};;{weekly_model};;{or_balance};;__aiub_end__';
 export const FIELD = Object.freeze({
     plan: 0, sessionPct: 1, sessionReset: 2, weeklyPct: 3, weeklyReset: 4,
     sonnetPct: 5, sonnetReset: 6, extraPct: 7, extraSpent: 8, extraLimit: 9,
@@ -19,7 +19,8 @@ export const FIELD = Object.freeze({
     sessionElapsed: 13, weeklyElapsed: 14, scopedElapsed: 15, vendorShort: 16,
     extraModel: 17, extraReset: 18, extraElapsed: 19,
     sessionModel: 20, weeklyModel: 21,
-    sentinel: 22,
+    orBalance: 22,
+    sentinel: 23,
 });
 
 // A vendor that names its primary rows is telling us its windows come in two

@@ -53,11 +53,12 @@ function resolveBinary(settings) {
 
 const Indicator = GObject.registerClass(
 class AiUsageBarIndicator extends PanelMenu.Button {
-    _init(settings, openPrefs) {
+    _init(settings, openPrefs, fixedVendor = null) {
         super._init(0.0, 'AI Usage Bar', false);
 
         this._settings = settings;
         this._openPrefs = openPrefs;
+        this._fixedVendor = fixedVendor;
         this._data = null;          // parsed snapshot for redraws
         this._busy = false;
         // A refresh asked for while one was in flight, to run once it settles.
@@ -69,13 +70,43 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         this._refreshToken = 0;
         this._rows = {};
 
-        // Panel: one markup label holds tags + percentages + bars.
+        // Panel: provider SVG icon + existing markup label.
+        this._panelBox = new St.BoxLayout({
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const iconNames = {
+            openai: 'openai.svg',
+            openrouter: 'openrouter.png',
+            antigravity: 'gemini.png',
+        };
+
+        const iconName = iconNames[this._fixedVendor];
+        if (iconName) {
+            const iconPath = GLib.build_filenamev([
+                GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]),
+                'icons',
+                iconName,
+            ]);
+
+            this._providerIcon = new St.Icon({
+                gicon: Gio.icon_new_for_string(iconPath),
+                icon_size: 16,
+                y_align: Clutter.ActorAlign.CENTER,
+                style_class: 'aiub-provider-icon',
+            });
+
+            this._panelBox.add_child(this._providerIcon);
+        }
+
         this._label = new St.Label({
-            text: '5h …',
+            text: '…',
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'aiub-label',
         });
-        this.add_child(this._label);
+
+        this._panelBox.add_child(this._label);
+        this.add_child(this._panelBox);
 
         this._buildMenu();
 
@@ -92,9 +123,12 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         this._intervalId = this._settings.connect('changed::refresh-interval',
             () => this._restartTimer());
         this._sourceIds = [
-            this._settings.connect('changed::vendor', () => this._refresh()),
             this._settings.connect('changed::binary-path', () => this._refresh()),
         ];
+        if (!this._fixedVendor)
+            this._sourceIds.push(
+                this._settings.connect('changed::vendor', () => this._refresh())
+            );
 
         this.menu.connect('open-state-changed', (_m, open) => {
             if (open)
@@ -121,30 +155,30 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             // but the data mapping does not: session/weekly still hold the
             // primary pool, so the panel bar and the show-session/show-weekly
             // toggles keep working exactly as they do for every other vendor.
-            this._addHeading('Session');
-            this._addRow('session', 'Session');
-            this._addRow('sonnet', 'Sonnet only');
-            this._addHeading('Weekly');
-            this._addRow('weekly', 'Weekly');
-            this._addRow('extra', 'Extra usage');
+            this._addHeading('5 小時額度');
+            this._addRow('session', '5 小時額度');
+            this._addRow('sonnet', 'Sonnet 專用額度');
+            this._addHeading('每週額度');
+            this._addRow('weekly', '每週額度');
+            this._addRow('extra', '額外使用量');
         } else {
-            this._addRow('session', 'Session');
-            this._addRow('weekly', 'Weekly');
-            this._addRow('sonnet', 'Sonnet only');
-            this._addRow('extra', 'Extra usage');
+            this._addRow('session', '5 小時額度');
+            this._addRow('weekly', '每週額度');
+            this._addRow('sonnet', 'Sonnet 專用額度');
+            this._addRow('extra', '額外使用量');
         }
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const refreshItem = new PopupMenu.PopupMenuItem('Atualizar agora');
+        const refreshItem = new PopupMenu.PopupMenuItem('立即更新');
         refreshItem.connect('activate', () => this._refresh());
         this.menu.addMenuItem(refreshItem);
 
-        const tuiItem = new PopupMenu.PopupMenuItem('Abrir TUI');
+        const tuiItem = new PopupMenu.PopupMenuItem('開啟 TUI');
         tuiItem.connect('activate', () => this._openTui());
         this.menu.addMenuItem(tuiItem);
 
-        const prefsItem = new PopupMenu.PopupMenuItem('Configurações');
+        const prefsItem = new PopupMenu.PopupMenuItem('設定');
         prefsItem.connect('activate', () => this._openPrefs());
         this.menu.addMenuItem(prefsItem);
     }
@@ -160,7 +194,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
     _addRow(key, name) {
         const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
         const vbox = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
+            vertical: true,
             x_expand: true,
             style_class: 'aiub-row',
         });
@@ -223,7 +257,8 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         // Captured for THIS attempt: the setting can change while we wait, and
         // a late result must not be rendered as if it belonged to the vendor
         // now selected.
-        const vendor = this._settings.get_string('vendor') || 'anthropic';
+        const vendor = this._fixedVendor ||
+            this._settings.get_string('vendor') || 'anthropic';
         const argv = [bin, '--vendor', vendor, '--format', FORMAT];
         const cancellable = new Gio.Cancellable();
         this._refreshCancellable = cancellable;
@@ -292,7 +327,9 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                     return;
                 // The selection may have changed while this ran even without a
                 // newer attempt (the change is queued as `_refreshPending`).
-                if ((this._settings.get_string('vendor') || 'anthropic') !== vendor)
+                const currentVendor = this._fixedVendor ||
+                    this._settings.get_string('vendor') || 'anthropic';
+                if (currentVendor !== vendor)
                     return;
                 if ((!out || !out.trim()) && !p.get_successful()) {
                     this._setError('ai-usagebar falhou', err || '');
@@ -332,6 +369,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         }
         this._data = {
             plan: field(f[FIELD.plan]),
+            orBalance: field(f[FIELD.orBalance]),
             hasUsageWindows: hasUsageWindows(f[FIELD.vendorShort]),
             grouped: isGrouped(f[FIELD.sessionModel]),
             session: {pct: integer(f[FIELD.sessionPct]), reset: field(f[FIELD.sessionReset]),
@@ -356,7 +394,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                     return {pct: null, reset: '—', model: scopedModel, label: scopedModel, elapsed: null};
                 }
                 return {pct: integer(f[FIELD.sonnetPct]), reset: field(f[FIELD.sonnetReset]),
-                    model: '', label: 'Sonnet only', elapsed: null};
+                    model: '', label: 'Sonnet 專用額度', elapsed: null};
             })(),
             // A named extra window (model + reset) renders as a percentage bar;
             // without a name the slot stays a spent/limit money budget.
@@ -383,14 +421,16 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         const showPct = this._settings.get_boolean('show-percent');
         const showBars = this._settings.get_boolean('show-bars');
 
-        const seg = (tag, pct, valueText, elapsed) => {
+        const seg = (tag, pct, valueText, elapsed, reset = '') => {
             const toks = [`<span foreground="${DIM}">${tag}</span>`];
             if (showPct)
                 toks.push(`<span foreground="${colorForPct(pct, colors)}">${esc(valueText)}</span>`);
             if (showBars)
                 toks.push(barMarkup(pct, w, colors, elapsed));
-            if (!showPct && !showBars) // never render an empty segment
+            if (!showPct && !showBars)
                 toks.push(`<span foreground="${colorForPct(pct, colors)}">${esc(valueText)}</span>`);
+            if (reset && reset !== '—')
+                toks.push(`<span foreground="${DIM}">↻${esc(reset)}</span>`);
             return toks.join(' ');
         };
 
@@ -398,25 +438,42 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         const showWeekly = this._settings.get_boolean('show-weekly');
         const parts = [];
 
+        // OpenRouter exposes its real remaining credit via {or_balance}.
+        if (this._fixedVendor === 'openrouter' && d.orBalance) {
+            this._label.clutter_text.set_markup(
+                `<span foreground="${DIM}">◈</span> ` +
+                `<span foreground="${FG}">${esc(d.orBalance)}</span>`
+            );
+            return;
+        }
+
         if (d.grouped) {
-            // Two independent pools. panel-pools picks the pools, show-session /
-            // show-weekly still pick the windows, so segments are pools ×
-            // windows and "just the 5h of both" needs no mode of its own.
-            for (const pool of this._selectedPools(d, showSession, showWeekly)) {
-                if (showSession && pool.session.pct != null) {
-                    parts.push(seg(`${pool.tag} 5h`, pool.session.pct,
-                        `${pool.session.pct}%`, pool.session.elapsed));
-                }
-                if (showWeekly && pool.weekly.pct != null) {
-                    parts.push(seg(`${pool.tag} 7d`, pool.weekly.pct,
-                        `${pool.weekly.pct}%`, pool.weekly.elapsed));
+            // Antigravity currently exposes weekly-only quota pools.
+            // G = Gemini, C = Claude & GPT OSS.
+            if (this._fixedVendor === 'antigravity') {
+                if (d.weekly.pct != null)
+                    parts.push(seg('G', d.weekly.pct,
+                        `${d.weekly.pct}%`, d.weekly.elapsed));
+                if (d.extra.pct != null)
+                    parts.push(seg('C', d.extra.pct,
+                        `${d.extra.pct}%`, d.extra.elapsed));
+            } else {
+                for (const pool of this._selectedPools(d, showSession, showWeekly)) {
+                    if (showSession && pool.session.pct != null) {
+                        parts.push(seg(`${pool.tag} 5h`, pool.session.pct,
+                            `${pool.session.pct}%`, pool.session.elapsed));
+                    }
+                    if (showWeekly && pool.weekly.pct != null) {
+                        parts.push(seg(`${pool.tag} 7d`, pool.weekly.pct,
+                            `${pool.weekly.pct}%`, pool.weekly.elapsed));
+                    }
                 }
             }
         } else {
             if (d.hasUsageWindows && showSession && d.session.pct != null)
-                parts.push(seg('5h', d.session.pct, `${d.session.pct}%`, d.session.elapsed));
+                parts.push(seg('5h', d.session.pct, `${d.session.pct}%`, d.session.elapsed, d.session.reset));
             if (d.hasUsageWindows && showWeekly && d.weekly.pct != null)
-                parts.push(seg('7d', d.weekly.pct, `${d.weekly.pct}%`, d.weekly.elapsed));
+                parts.push(seg('7d', d.weekly.pct, `${d.weekly.pct}%`, d.weekly.elapsed, d.weekly.reset));
             if (this._settings.get_boolean('show-extra') &&
                 d.extra.pct != null && d.extra.spent && d.extra.limit)
                 parts.push(seg('ex', d.extra.pct, d.extra.spent, null)); // $ budget → no meta
@@ -471,13 +528,13 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         };
 
         // Under a group heading the row is named by its pool, not by the window.
-        this._rows.session.nameL.text = d.session.model || 'Session';
-        this._rows.weekly.nameL.text = d.weekly.model || 'Weekly';
+        this._rows.session.nameL.text = d.session.model || '5 小時額度';
+        this._rows.weekly.nameL.text = d.weekly.model || '每週額度';
         upd('session', d.session.pct, `${d.session.pct ?? 0}%`, d.session.reset,
             d.hasUsageWindows && d.session.pct != null, d.session.elapsed);
         upd('weekly', d.weekly.pct, `${d.weekly.pct ?? 0}%`, d.weekly.reset,
             d.hasUsageWindows && d.weekly.pct != null, d.weekly.elapsed);
-        this._rows.sonnet.nameL.text = d.sonnet.label || 'Sonnet only';
+        this._rows.sonnet.nameL.text = d.sonnet.label || 'Sonnet 專用額度';
         upd('sonnet', d.sonnet.pct, `${d.sonnet.pct ?? 0}%`, d.sonnet.reset, d.sonnet.pct != null, d.sonnet.elapsed);
         if (d.extra.model) {
             // Named quota window (e.g. Antigravity's "Claude & GPT OSS (weekly)").
@@ -485,7 +542,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             upd('extra', d.extra.pct, `${d.extra.pct}%`, d.extra.reset || '—',
                 d.extra.pct != null, d.extra.elapsed);
         } else {
-            this._rows.extra.nameL.text = 'Extra Usage';
+            this._rows.extra.nameL.text = '額外使用量';
             upd('extra', d.extra.pct, `${d.extra.spent} / ${d.extra.limit}`, null,
                 d.extra.pct != null && !!d.extra.spent && !!d.extra.limit, null); // $ budget → no meta
         }
@@ -561,26 +618,49 @@ export default class AiUsageBarExtension extends Extension {
     }
 
     _place() {
-        const existing = Main.panel.statusArea[ROLE];
-        if (existing) {
-            existing.destroy();
-            delete Main.panel.statusArea[ROLE];
+        for (const entry of this._indicators ?? []) {
+            entry.indicator.destroy();
+            delete Main.panel.statusArea[entry.role];
         }
-        this._indicator = new Indicator(this._settings, () => this.openPreferences());
+        this._indicators = [];
         const box = this._settings.get_string('panel-box') || 'right';
         const index = Math.max(0, this._settings.get_int('panel-index'));
-        Main.panel.addToStatusArea(ROLE, this._indicator, index, box);
+
+        this._indicators = [];
+
+        const vendors = ['openai', 'openrouter', 'antigravity'];
+
+        vendors.forEach((vendor, offset) => {
+            console.log(`AIUB: creating vendor=${vendor}`);
+            console.log(`AIUB: creating vendor=${vendor}, role=${ROLE}-${vendor}`);
+            const indicator = new Indicator(
+                this._settings,
+                () => this.openPreferences(),
+                vendor
+            );
+
+            const role = `${ROLE}-${vendor}`;
+
+            Main.panel.addToStatusArea(
+                role,
+                indicator,
+                index + offset,
+                box
+            );
+
+            this._indicators.push({role, indicator});
+        });
     }
 
     disable() {
         for (const id of this._placeIds ?? [])
             this._settings.disconnect(id);
         this._placeIds = null;
-        if (this._indicator) {
-            this._indicator.destroy();
-            this._indicator = null;
+        for (const entry of this._indicators ?? []) {
+            entry.indicator.destroy();
+            delete Main.panel.statusArea[entry.role];
         }
-        delete Main.panel.statusArea[ROLE];
+        this._indicators = [];
         this._settings = null;
     }
 }

@@ -8,7 +8,7 @@ import GLib from 'gi://GLib';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-// ── Vendor login / config ────────────────────────────────────────────────
+// ── AI 服務商 login / config ────────────────────────────────────────────────
 const VENDOR_AUTH = [
     {id: 'anthropic', name: 'Claude', kind: 'oauth', cli: 'claude', login: 'claude', pkg: '@anthropic-ai/claude-code'},
     {id: 'openai', name: 'Codex', kind: 'oauth', cli: 'codex', login: 'codex login', pkg: '@openai/codex'},
@@ -195,39 +195,39 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
         window.add(page);
 
         // ── Display ──────────────────────────────────────────────────────
-        const display = new Adw.PreferencesGroup({title: _('Exibição')});
+        const display = new Adw.PreferencesGroup({title: _('顯示設定')});
         page.add(display);
 
-        const showSession = new Adw.SwitchRow({title: _('Mostrar barra de 5h (sessão)')});
+        const showSession = new Adw.SwitchRow({title: _('顯示 5 小時額度')});
         settings.bind('show-session', showSession, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showSession);
 
-        const showWeekly = new Adw.SwitchRow({title: _('Mostrar barra semanal')});
+        const showWeekly = new Adw.SwitchRow({title: _('顯示每週額度')});
         settings.bind('show-weekly', showWeekly, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showWeekly);
 
         const showExtra = new Adw.SwitchRow({
-            title: _('Mostrar barra de uso extra (3ª)'),
-            subtitle: _('o custo extra ($) como terceira barra'),
+            title: _('顯示額外使用量（第 3 條）'),
+            subtitle: _('將額外費用（$）顯示為第三條進度條'),
         });
         settings.bind('show-extra', showExtra, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showExtra);
 
         // Only Antigravity reports two independent pools today; for every other
         // vendor these rows are inert, which the subtitle spells out.
-        const poolLabels = [_('Ambos'), _('Só o primeiro'), _('Só o segundo'), _('Automático')];
+        const poolLabels = [_('兩者'), _('僅第一個'), _('僅第二個'), _('自動')];
         const poolValues = ['both', 'primary', 'secondary', 'auto'];
         const pools = new Adw.ComboRow({
-            title: _('Pools no painel'),
-            subtitle: _('para vendors com dois pools independentes (ex.: Antigravity: Gemini e Claude & GPT OSS)'),
+            title: _('面板顯示的額度池'),
+            subtitle: _('適用於具有兩個獨立額度池的服務（例如 Antigravity：Gemini 與 Claude & GPT OSS）'),
             model: Gtk.StringList.new(poolLabels),
         });
         bindCombo(settings, 'panel-pools', pools, poolValues);
         display.add(pools);
 
         const autoThreshold = new Adw.SpinRow({
-            title: _('Limiar do modo automático (%)'),
-            subtitle: _('troca para o outro pool quando o primeiro passa deste uso'),
+            title: _('自動切換門檻（%）'),
+            subtitle: _('第一個額度池超過此使用率時，自動切換至另一個'),
             adjustment: new Gtk.Adjustment({lower: 50, upper: 100, step_increment: 1, page_increment: 5}),
         });
         settings.bind('panel-auto-threshold', autoThreshold, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -238,42 +238,42 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
         syncThreshold();
         settings.connect('changed::panel-pools', syncThreshold);
 
-        const showPercent = new Adw.SwitchRow({title: _('Mostrar porcentagem/valor')});
+        const showPercent = new Adw.SwitchRow({title: _('顯示百分比／數值')});
         settings.bind('show-percent', showPercent, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showPercent);
 
         const showBars = new Adw.SwitchRow({
-            title: _('Mostrar barras'),
-            subtitle: _('desligado = só os números, sem as barras'),
+            title: _('顯示進度條'),
+            subtitle: _('關閉後只顯示數字，不顯示進度條'),
         });
         settings.bind('show-bars', showBars, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showBars);
 
         const barWidth = new Adw.SpinRow({
-            title: _('Largura de cada barra (células)'),
+            title: _('每個進度條寬度（字元）'),
             adjustment: new Gtk.Adjustment({lower: 4, upper: 20, step_increment: 1, page_increment: 2}),
         });
         settings.bind('bar-width', barWidth, 'value', Gio.SettingsBindFlags.DEFAULT);
         display.add(barWidth);
 
-        // ── Cores ────────────────────────────────────────────────────────
+        // ── 顏色 ────────────────────────────────────────────────────────
         const colors = new Adw.PreferencesGroup({
-            title: _('Cores'),
-            description: _('Cor da barra por faixa de uso (One Dark por padrão).'),
+            title: _('顏色'),
+            description: _('依使用率設定進度條顏色（預設使用 One Dark 配色）。'),
         });
         page.add(colors);
-        colors.add(colorRow(settings, 'color-low', _('Baixo (<50%)')));
-        colors.add(colorRow(settings, 'color-mid', _('Médio (50–74%)')));
-        colors.add(colorRow(settings, 'color-high', _('Alto (75–89%)')));
-        colors.add(colorRow(settings, 'color-critical', _('Crítico (≥90%)')));
-        colors.add(colorRow(settings, 'color-empty', _('Vazio (fundo da barra)')));
+        colors.add(colorRow(settings, 'color-low', _('低（<50%）')));
+        colors.add(colorRow(settings, 'color-mid', _('中等（50–74%）')));
+        colors.add(colorRow(settings, 'color-high', _('高（75–89%）')));
+        colors.add(colorRow(settings, 'color-critical', _('嚴重（≥90%）')));
+        colors.add(colorRow(settings, 'color-empty', _('未使用（進度條背景）')));
 
-        // ── Dados ────────────────────────────────────────────────────────
-        const data = new Adw.PreferencesGroup({title: _('Dados')});
+        // ── 資料 ────────────────────────────────────────────────────────
+        const data = new Adw.PreferencesGroup({title: _('資料')});
         page.add(data);
 
         const interval = new Adw.SpinRow({
-            title: _('Intervalo de atualização (s)'),
+            title: _('更新間隔（秒）'),
             adjustment: new Gtk.Adjustment({lower: 5, upper: 3600, step_increment: 5, page_increment: 30}),
         });
         settings.bind('refresh-interval', interval, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -281,35 +281,35 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
 
         const vendorList = ['anthropic', 'openai', 'zai', 'openrouter', 'deepseek', 'antigravity'];
         const vendor = new Adw.ComboRow({
-            title: _('Vendor'),
-            subtitle: _('anthropic e antigravity expõem as janelas de 5h + semanal'),
+            title: _('AI 服務商'),
+            subtitle: _('Anthropic 與 Antigravity 提供 5 小時及每週額度資訊'),
             model: Gtk.StringList.new(vendorList),
         });
         bindCombo(settings, 'vendor', vendor, vendorList);
         data.add(vendor);
 
-        const binPath = new Adw.EntryRow({title: _('Caminho do binário (vazio = auto)')});
+        const binPath = new Adw.EntryRow({title: _('執行檔路徑（留空＝自動偵測）')});
         settings.bind('binary-path', binPath, 'text', Gio.SettingsBindFlags.DEFAULT);
         data.add(binPath);
 
         // ── Position ─────────────────────────────────────────────────────
         const pos = new Adw.PreferencesGroup({
-            title: _('Posição no painel'),
-            description: _('Mudanças aplicam na hora.'),
+            title: _('面板位置'),
+            description: _('變更會立即套用。'),
         });
         page.add(pos);
 
         const box = new Adw.ComboRow({
-            title: _('Área'),
-            subtitle: _('right = ao lado da rede/relógio'),
+            title: _('區域'),
+            subtitle: _('right＝網路／時鐘旁'),
             model: Gtk.StringList.new(['left', 'center', 'right']),
         });
         bindCombo(settings, 'panel-box', box, ['left', 'center', 'right']);
         pos.add(box);
 
         const index = new Adw.SpinRow({
-            title: _('Índice na área'),
-            subtitle: _('0 = mais à esquerda da área escolhida'),
+            title: _('區域內排序'),
+            subtitle: _('0＝所選區域的最左側'),
             adjustment: new Gtk.Adjustment({lower: 0, upper: 20, step_increment: 1, page_increment: 1}),
         });
         settings.bind('panel-index', index, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -318,17 +318,17 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
         this._buildVendorsPage(window);
     }
 
-    // A "Vendors" tab: per-vendor credential status + a login/config button.
+    // A "AI 服務商" tab: per-vendor credential status + a login/config button.
     _buildVendorsPage(window) {
         const page = new Adw.PreferencesPage({
-            title: _('Vendors'),
+            title: _('AI 服務商'),
             icon_name: 'dialog-password-symbolic',
         });
         window.add(page);
 
         const group = new Adw.PreferencesGroup({
-            title: _('Login / configuração por vendor'),
-            description: _('OAuth abre um terminal com o comando de login; vendors de API key são configurados no TUI. Reabra esta janela para reavaliar o status.'),
+            title: _('AI 服務登入／設定'),
+            description: _('OAuth 會開啟終端機執行登入指令；使用 API Key 的服務請透過 TUI 設定。重新開啟此視窗即可更新登入狀態。'),
         });
         page.add(group);
 
@@ -342,16 +342,16 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
             const update = () => {
                 if (v.kind === 'local') {
                     const productDetected = vendorConfigured(v);
-                    row.subtitle = _('verificando…');
+                    row.subtitle = _('檢查中…');
                     checkCliInstalled(v.cli, (installed) => {
                         if (productDetected) {
-                            row.subtitle = _('✓ Antigravity detectado — mantenha o app, IDE ou agy aberto');
+                            row.subtitle = _('✓ 已偵測到 Antigravity — 請保持 App、IDE 或 agy 開啟');
                         } else if (installed) {
-                            row.subtitle = _('agy instalado — abra uma sessão para disponibilizar a quota');
+                            row.subtitle = _('已安裝 agy — 請開啟工作階段以取得額度資訊');
                         } else {
-                            row.subtitle = _('abra ou instale o app, a IDE ou o agy; não há login separado');
+                            row.subtitle = _('請開啟或安裝 App、IDE 或 agy；不需要另外登入');
                         }
-                        btn.label = installed ? _('Abrir agy') : _('Sem login separado');
+                        btn.label = installed ? _('開啟 agy') : _('不需另外登入');
                         btn.sensitive = installed;
                     });
                     return;
@@ -359,21 +359,21 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
                 btn.sensitive = true;
                 if (v.kind !== 'oauth') {
                     const ok = vendorConfigured(v);
-                    row.subtitle = ok ? _('✓ Configurado') : `⚠ ${_('Sem API key')} — ${v.env}`;
-                    btn.label = _('Configurar (TUI)');
+                    row.subtitle = ok ? _('✓ 已設定') : `⚠ ${_('尚未設定 API Key')} — ${v.env}`;
+                    btn.label = _('設定（TUI）');
                     return;
                 }
                 if (vendorConfigured(v)) {
-                    row.subtitle = _('✓ Configurado');
-                    btn.label = _('Re-logar');
+                    row.subtitle = _('✓ 已設定');
+                    btn.label = _('重新登入');
                     return;
                 }
-                row.subtitle = _('verificando…');
+                row.subtitle = _('檢查中…');
                 checkCliInstalled(v.cli, (installed) => {
                     row.subtitle = installed
-                        ? `⚠ ${_('Não logado')} — \`${v.login}\``
-                        : `⚠ ${v.cli} ${_('não instalado')} (instala em ~/.local, sem sudo)`;
-                    btn.label = installed ? _('Logar') : _('Instalar + logar');
+                        ? `⚠ ${_('尚未登入')} — \`${v.login}\``
+                        : `⚠ ${v.cli} ${_('尚未安裝')} (安裝至 ~/.local，不需要 sudo)`;
+                    btn.label = installed ? _('登入') : _('安裝並登入');
                 });
             };
             update();
