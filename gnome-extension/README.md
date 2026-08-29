@@ -1,144 +1,138 @@
-# AI Usage Bar — GNOME Shell extension
+# AI Usage Bar — GNOME Shell 擴充套件
 
-A native GNOME top-panel indicator for [`ai-usagebar`](../README.md). It puts
-the **5-hour session** and **weekly** usage bars next to the clock/network,
-with optional dynamic model-scoped (for example, Fable) and extra-usage rows
-in a native click dropdown.
+這是 [`ai-usagebar`](../README.md) 的客製化 GNOME Shell 前端，會在頂端面板同時建立三個獨立指示器：
 
-This is the GNOME counterpart to the project's Waybar widget: Waybar is
-Wayland-only (Sway/Hyprland) and can't dock into the GNOME top bar, so this
-extension bridges the gap by shelling out to the same `ai-usagebar` binary and
-drawing the bars with native `St` widgets. The panel is rendered by GNOME; no
-GNOME screenshot is currently bundled.
+- **GPT**（底層 vendor ID：`openai`）
+- **OpenRouter**（底層 vendor ID：`openrouter`）
+- **Gemini**（透過 Google Antigravity，底層 vendor ID：`antigravity`）
 
-## Vendor scope
+每個指示器都有自己的服務圖示與原生下拉選單。擴充套件會呼叫同一套
+`ai-usagebar` CLI 取得資料，再使用 GNOME `St` 元件繪製額度、進度條與重設時間；它不會把
+Waybar tooltip 原樣塞進 GNOME 面板。
 
-The selector supports **Claude, Codex, Z.AI, OpenRouter, DeepSeek, and
-Google Antigravity**. **Kimi is widget/TUI-only in this release**; desktop
-protocol and marker parity for Kimi is dedicated future work. DeepSeek is
-balance-only, so the extension shows its balance in the header and suppresses
-the 5h/weekly quota rows.
+這個 fork 的 GNOME 前端只顯示上述三項服務。底層 CLI 與 TUI 仍保留上游專案支援的其他
+AI 服務商。
 
-Antigravity is the first vendor with **two independent quota pools** (Gemini,
-and Claude & GPT OSS), each carrying its own 5-hour and weekly window. The
-dropdown groups them under `Session` and `Weekly` headings, and the panel draws
-one segment per pool per window — see [Two-pool vendors](#two-pool-vendors).
-Quota comes from whichever Antigravity product is running locally (the app, the
-IDE, or an interactive `agy` session); with all of them closed the extension
-shows the last cached figures, then an error once those age out.
+![GNOME 頂端面板同時顯示 GPT 的 5 小時與每週額度、OpenRouter 剩餘額度，以及 Gemini 的兩個每週額度池](../screenshots/gnome-usagebar.png)
 
-## Requirements
+## 顯示內容
 
-- GNOME Shell **45–50** (ESM extensions).
-- The `ai-usagebar` binary on `PATH` (or `~/.cargo/bin`, or set an explicit
-  path in preferences). Install it with `cargo install ai-usagebar` or from
-  the AUR — see the [main README](../README.md).
-- For the colored bars to be even, the panel uses a monospace font. For the
-  dropdown's Nerd Font glyphs to render, set a Nerd Font as your monospace
-  font; without one the icons show as tofu but the bars/numbers are fine.
+- **GPT**：顯示 5 小時與每週用量、進度條及重設倒數。
+- **OpenRouter**：直接顯示 `{or_balance}` 回傳的剩餘額度。
+- **Gemini**：顯示 Antigravity 提供的兩個每週額度池；`G` 代表 Gemini，`C` 代表
+  Claude & GPT OSS。
+- 點擊任一指示器會開啟該服務的原生下拉選單。
+- 下拉選單可立即更新資料、開啟 `ai-usagebar-tui`，或進入擴充套件設定。
+- 面板與設定介面使用繁體中文。
 
-## Install (dev)
+三個指示器使用圖片圖示，不需要 Nerd Font。進度條使用等寬字型，確保填滿與未使用區段
+能夠整齊對齊。
+
+## 系統需求
+
+- GNOME Shell **45–50**（ESM extension）。
+- 系統中必須能找到 `ai-usagebar`；擴充套件依序檢查偏好設定中的自訂路徑、`PATH`，以及
+  `~/.cargo/bin/ai-usagebar`。
+- 若要從選單開啟 TUI，需要安裝 `ai-usagebar-tui`，以及 `kgx`、`gnome-terminal` 或
+  `xterm` 其中之一。
+- 安裝方式請參考[主 README](../README.md)。
+
+## 各服務設定
+
+| 顯示名稱 | 資料來源 | 需要的設定 |
+|---|---|---|
+| GPT | `~/.codex/auth.json` | 安裝 Codex CLI 後執行 `codex login`。憑證會自動重新整理。 |
+| OpenRouter | API Key | 設定 `OPENROUTER_API_KEY`，或在 `config.toml` 的 `[openrouter]` 填入 `api_key`。也可由偏好設定開啟 TUI 設定。 |
+| Gemini | 本機 Antigravity 服務 | 開啟 Antigravity App、IDE 或互動式 `agy` 工作階段；不需要另外登入。 |
+
+## 開發版安裝
+
+取得這個 fork 與客製化分支：
+
+```bash
+git clone https://github.com/Teng91/ai-usagebar.git
+cd ai-usagebar
+git switch joy/gnome-ai-usagebar
+cd gnome-extension
+```
+
+安裝擴充套件：
 
 ```bash
 ./install.sh
-# then reload the shell:
-#   X11      → Alt+F2, type 'r', Enter
-#   Wayland  → log out / in
+
+# X11：Alt+F2，輸入 r 後按 Enter
+# Wayland：登出後重新登入
 gnome-extensions enable ai-usagebar@akitaonrails.github.io
 ```
 
-Manual equivalent:
+手動安裝方式：
 
 ```bash
 UUID=ai-usagebar@akitaonrails.github.io
-DEST=~/.local/share/gnome-shell/extensions/$UUID
+DEST="$HOME/.local/share/gnome-shell/extensions/$UUID"
 glib-compile-schemas schemas/
-mkdir -p "$DEST" && cp -r * "$DEST"/      # or: ln -s "$PWD" "$DEST"
+mkdir -p "$DEST" && cp -r . "$DEST"
 ```
 
-## Preferences
+目前保留上游 UUID `ai-usagebar@akitaonrails.github.io`，讓既有安裝可以直接升級。請勿同時
+安裝上游 GNOME 擴充套件與此 fork，兩者會使用相同 UUID。
 
-`gnome-extensions prefs ai-usagebar@akitaonrails.github.io`
+## 偏好設定
 
-| Setting | Default | Notes |
-|---|---|---|
-| Show 5h / weekly bar | on / on | toggle either window |
-| Show percentage | on | numeric `%` next to each bar |
-| Bar width | 8 | cells per bar (4–20) |
-| Refresh interval | 30 s | 5–3600 |
-| Vendor | `anthropic` | selectors: Claude, Codex, Z.AI, OpenRouter, DeepSeek, Antigravity (not Kimi). Claude, Codex, Z.AI and Antigravity expose generic session/weekly windows. |
-| Panel pools | `both` | two-pool vendors only: `both`, first pool, second pool, or `auto` |
-| Auto threshold | 95 % | `auto` switches pools once the shown one reaches this usage |
-| Binary path | auto | empty = `PATH` then `~/.cargo/bin` |
-| Panel area | `right` | `right` = next to network/clock; also `center`/`left` |
-| Panel index | 0 | order within the area (0 = leftmost) |
-
-## How it renders
-
-It runs:
-
-```
-ai-usagebar --vendor <vendor> --format '{plan};;{session_pct};;{session_reset};;{weekly_pct};;{weekly_reset};;{sonnet_pct};;{sonnet_reset};;{extra_pct};;{extra_spent};;{extra_limit};;{scoped_model};;{scoped_pct};;{scoped_reset};;{session_elapsed};;{weekly_elapsed};;{scoped_elapsed};;{vendor_short};;{extra_model};;{extra_reset};;{extra_elapsed};;{session_model};;{weekly_model};;__aiub_end__'
+```bash
+gnome-extensions prefs ai-usagebar@akitaonrails.github.io
 ```
 
-parses the Waybar JSON (`{text, tooltip, class}`), extracts the formatted
-fields from `text`, and draws the plan, session, weekly, optional dynamic
-model-scoped (for example, Fable), and optional extra-usage values with native `St`
-widgets. Colors mirror the
-binary's default One Dark theme and `severity_for()` thresholds (≥90 red · ≥75
-orange · ≥50 yellow · else green), so it matches the Waybar widget. The
-dropdown is a native aligned menu, not the tooltip markup rendered verbatim.
+| 設定 | 預設值 | 說明 |
+|---|---:|---|
+| 顯示 5 小時額度 | 開啟 | 控制 GPT 的 5 小時額度。 |
+| 顯示每週額度 | 開啟 | 控制 GPT 的每週額度，以及 Gemini 的兩個每週額度池。 |
+| 顯示額外使用量 | 關閉 | 資料存在時顯示額外費用進度條。 |
+| 顯示百分比／數值 | 開啟 | 在進度條旁顯示百分比或數值。 |
+| 顯示進度條 | 開啟 | 關閉後只顯示數值。 |
+| 每個進度條寬度 | 8 | 可設定為 4–20 個字元。 |
+| 更新間隔 | 30 秒 | 可設定為 5–3600 秒。 |
+| 執行檔路徑 | 自動 | 留空時從 `PATH` 或 `~/.cargo/bin` 尋找。 |
+| 區域 | `right` | 三個指示器共同放在 `left`、`center` 或 `right`。 |
+| 區域內排序 | 0 | GPT 從此位置開始，OpenRouter 與 Gemini 依序排列。 |
 
-Pace markers require both a real reset and elapsed-time output. Anthropic and
-Antigravity supply that pair, so other vendors can render their generic windows
-without a pace marker. When available, the bar
-draws a fixed blue `│` marker at the elapsed-time position. The fill after that
-point uses Rust's point-delta
-severity bands: at least 10 points ahead is red, 1–9 ahead is orange, -10
-through on-pace is yellow, and more than 10 under is green. A missing reset
-(including `—`) keeps its row visible but suppresses the marker, even if an
-older binary reports elapsed `0`. `{vendor_short}` distinguishes balance-only
-DeepSeek from quota vendors. The final `__aiub_end__` literal is ignored;
-it receives a stale `⏸` suffix so the last elapsed field remains numeric.
+「AI 服務商」頁面只列出 GPT、OpenRouter 與 Gemini，可檢查目前設定狀態並啟動相對應的
+登入或設定流程。服務種類是固定的，因此沒有 vendor selector。
 
-The subprocess is spawned **asynchronously** (`Gio.Subprocess` +
-`communicate_utf8_async`) so it never blocks the shell, and all timers /
-signal handlers are torn down in `disable()`.
+## 資料取得與顯示方式
 
-### Model-scoped weekly window
+擴充套件會非同步執行以下三種命令，因此 CLI 請求不會阻塞 GNOME Shell：
 
-When Anthropic reports a model-scoped weekly limit, `{scoped_model}` provides
-the dynamic row label (for example, `Fable`) and `{scoped_pct}` provides its
-usage. The model name is the presence signal: if `{scoped_reset}` is missing,
-the extension displays `—` instead of falling back to a potentially unrelated
-legacy model-specific window. Older binaries or accounts without a scoped limit
-leave the model field empty and omit the dynamic row.
+```text
+ai-usagebar --vendor openai --format <format>
+ai-usagebar --vendor openrouter --format <format>
+ai-usagebar --vendor antigravity --format <format>
+```
 
-### Two-pool vendors
+實際使用的 format 為：
 
-A vendor whose windows come in two independent pools names its primary rows via
-`{session_model}` / `{weekly_model}`; that name is the presence signal for the
-grouped layout. Antigravity is the first such vendor. When present, the dropdown
-groups the four rows under `Session` and `Weekly` headings, each holding one bar
-per pool (`Gemini`, `Claude & GPT OSS`), and the panel prefixes each segment
-with the pool's initial (`G 5h`, `C 7d`).
+```text
+{plan};;{session_pct};;{session_reset};;{weekly_pct};;{weekly_reset};;{sonnet_pct};;{sonnet_reset};;{extra_pct};;{extra_spent};;{extra_limit};;{scoped_model};;{scoped_pct};;{scoped_reset};;{session_elapsed};;{weekly_elapsed};;{scoped_elapsed};;{vendor_short};;{extra_model};;{extra_reset};;{extra_elapsed};;{session_model};;{weekly_model};;{or_balance};;__aiub_end__
+```
 
-The slot mapping is unchanged: the primary pool still fills the generic
-`session`/`weekly` fields, so the panel toggles and the pace markers keep
-working exactly as they do for single-pool vendors. Only the labels and the
-visual order differ. Binaries that predate these placeholders echo them back
-literally, the extension discards them, and the flat four-row layout is used —
-so an older binary keeps working.
+程式解析 CLI 的 Waybar JSON（`{text, tooltip, class}`），再從 `text` 取出上述欄位。最後的
+`__aiub_end__` 是保護 elapsed 欄位不受 stale `⏸` 後綴影響的 sentinel。
 
-Each pool keeps **its own countdown**. The two 5-hour windows can look
-synchronised while both are untouched — an unused bucket's reset slides with the
-clock and only anchors on first use — but they diverge as soon as either pool is
-used, so they are never merged into one row.
+進度條沿用 `ai-usagebar` 的 One Dark 預設配色：90% 以上為紅色、75–89% 為橘色、
+50–74% 為黃色，其餘為綠色。當資料同時提供有效的 reset 與 elapsed 值時，進度條會加入
+藍色 `│` pace marker。
 
-`Panel pools` selects which pools the panel draws: `both` (default, four
-segments), either pool alone, or `auto`, which shows the preferred pool and
-falls back to the other once **either** of its windows reaches `Auto threshold`.
-An unavailable pool is omitted; selecting it explicitly falls back to the pool
-that has data instead of leaving the panel blank.
-It composes with the 5h/weekly toggles — turning the weekly bar off leaves two
-segments, one per pool, at the same width as a single-pool vendor.
+## Gemini 額度池
+
+Antigravity 會提供 Gemini 與 Claude & GPT OSS 兩個獨立額度池。頂端面板以 `G` 和 `C`
+分別顯示兩個每週用量；兩者各自保留用量百分比、重設時間與 pace marker。關閉「顯示每週
+額度」會同時隱藏這兩段資訊。
+
+資料來自目前正在執行的 Antigravity App、IDE 或互動式 `agy` 工作階段。如果這些程式都已
+關閉，擴充套件會先顯示 CLI 快取；快取過期後則顯示錯誤狀態。
+
+## 商標
+
+GPT、OpenAI、OpenRouter、Gemini、Google Antigravity，以及相關標誌均為其各自權利人所有；
+本專案使用名稱與圖示僅為識別對應服務，不代表獲得其背書或合作。

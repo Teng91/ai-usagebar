@@ -17,8 +17,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import {barMarkup, colorForPct, disambiguateTags, field, FIELD, FORMAT, hasUsageWindows, integer,
-    isGrouped, markerElapsed, plainTextFromPango, selectPools,
+import {barMarkup, colorForPct, field, FIELD, FORMAT, hasUsageWindows, integer,
+    isGrouped, markerElapsed, plainTextFromPango,
     splitFormatOutput} from './marker-logic.js';
 
 const ROLE = 'ai-usagebar';
@@ -53,7 +53,7 @@ function resolveBinary(settings) {
 
 const Indicator = GObject.registerClass(
 class AiUsageBarIndicator extends PanelMenu.Button {
-    _init(settings, openPrefs, fixedVendor = null) {
+    _init(settings, openPrefs, fixedVendor) {
         super._init(0.0, 'AI Usage Bar', false);
 
         this._settings = settings;
@@ -70,7 +70,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         this._refreshToken = 0;
         this._rows = {};
 
-        // Panel: provider SVG icon + existing markup label.
+        // Panel: provider image icon + existing markup label.
         this._panelBox = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -115,7 +115,6 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             'bar-width', 'show-percent', 'show-bars', 'show-session',
             'show-weekly', 'show-extra', 'color-low', 'color-mid',
             'color-high', 'color-critical', 'color-empty',
-            'panel-pools', 'panel-auto-threshold',
         ];
         this._viewIds = viewKeys.map(k =>
             this._settings.connect(`changed::${k}`, () => this._render()));
@@ -125,10 +124,6 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         this._sourceIds = [
             this._settings.connect('changed::binary-path', () => this._refresh()),
         ];
-        if (!this._fixedVendor)
-            this._sourceIds.push(
-                this._settings.connect('changed::vendor', () => this._refresh())
-            );
 
         this.menu.connect('open-state-changed', (_m, open) => {
             if (open)
@@ -254,11 +249,9 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         const token = ++this._refreshToken;
 
         const bin = resolveBinary(this._settings);
-        // Captured for THIS attempt: the setting can change while we wait, and
-        // a late result must not be rendered as if it belonged to the vendor
-        // now selected.
-        const vendor = this._fixedVendor ||
-            this._settings.get_string('vendor') || 'anthropic';
+        // Capture the provider for this request so a superseded result can
+        // never be painted into a replacement indicator.
+        const vendor = this._fixedVendor;
         const argv = [bin, '--vendor', vendor, '--format', FORMAT];
         const cancellable = new Gio.Cancellable();
         this._refreshCancellable = cancellable;
@@ -274,7 +267,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             this._busy = false;
             this._refreshCancellable = null;
             this._refreshPending = false;
-            this._setError(`não consegui executar "${bin}"`, String(e));
+            this._setError(`無法執行「${bin}」`, String(e));
             return;
         }
         this._refreshProc = proc;
@@ -290,7 +283,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             cancellable.cancel();
             if (this._refreshToken === token) {
                 this._busy = false;
-                this._setError('ai-usagebar demorou demais', `timeout após ${REFRESH_TIMEOUT_SECS}s`);
+                this._setError('ai-usagebar 回應逾時', `等待超過 ${REFRESH_TIMEOUT_SECS} 秒`);
                 // Do not strand a request that arrived while this one hung.
                 if (this._refreshPending) {
                     this._refreshPending = false;
@@ -325,14 +318,12 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                 // belong to whatever vendor was selected when it started.
                 if (!current)
                     return;
-                // The selection may have changed while this ran even without a
-                // newer attempt (the change is queued as `_refreshPending`).
-                const currentVendor = this._fixedVendor ||
-                    this._settings.get_string('vendor') || 'anthropic';
-                if (currentVendor !== vendor)
+                // Ignore a result if this indicator was repurposed while the
+                // subprocess was running.
+                if (this._fixedVendor !== vendor)
                     return;
                 if ((!out || !out.trim()) && !p.get_successful()) {
-                    this._setError('ai-usagebar falhou', err || '');
+                    this._setError('ai-usagebar 執行失敗', err || '');
                     return;
                 }
                 this._consume(out || '');
@@ -340,7 +331,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                 cleanup();
                 if (current && !(e instanceof GLib.Error &&
                       e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) && !timedOut)
-                    this._setError('erro ao ler a saída', String(e));
+                    this._setError('讀取輸出時發生錯誤', String(e));
             } finally {
                 // Run whatever was requested while we were busy.
                 if (current && this._refreshPending) {
@@ -356,7 +347,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         try {
             data = JSON.parse(stdout);
         } catch (e) {
-            this._setError('saída inválida', stdout);
+            this._setError('輸出格式無效', stdout);
             return;
         }
         const raw = plainTextFromPango(data.text);
@@ -449,25 +440,15 @@ class AiUsageBarIndicator extends PanelMenu.Button {
 
         if (d.grouped) {
             // Antigravity currently exposes weekly-only quota pools.
-            // G = Gemini, C = Claude & GPT OSS.
+            // G = Gemini, C = Claude & GPT OSS. The weekly visibility toggle
+            // controls both because neither pool has a 5-hour panel segment.
             if (this._fixedVendor === 'antigravity') {
-                if (d.weekly.pct != null)
+                if (showWeekly && d.weekly.pct != null)
                     parts.push(seg('G', d.weekly.pct,
                         `${d.weekly.pct}%`, d.weekly.elapsed));
-                if (d.extra.pct != null)
+                if (showWeekly && d.extra.pct != null)
                     parts.push(seg('C', d.extra.pct,
                         `${d.extra.pct}%`, d.extra.elapsed));
-            } else {
-                for (const pool of this._selectedPools(d, showSession, showWeekly)) {
-                    if (showSession && pool.session.pct != null) {
-                        parts.push(seg(`${pool.tag} 5h`, pool.session.pct,
-                            `${pool.session.pct}%`, pool.session.elapsed));
-                    }
-                    if (showWeekly && pool.weekly.pct != null) {
-                        parts.push(seg(`${pool.tag} 7d`, pool.weekly.pct,
-                            `${pool.weekly.pct}%`, pool.weekly.elapsed));
-                    }
-                }
             }
         } else {
             if (d.hasUsageWindows && showSession && d.session.pct != null)
@@ -481,28 +462,6 @@ class AiUsageBarIndicator extends PanelMenu.Button {
 
         const gap = `<span foreground="${DIM}">   </span>`;
         this._label.clutter_text.set_markup(parts.join(gap) || ' ');
-    }
-
-    // The pools the panel should draw, tagged and in display order. Primary is
-    // the generic session/weekly pair; secondary reuses the scoped and extra
-    // slots, which for a grouped vendor hold the second pool's two windows.
-    _selectedPools(d, showSession, showWeekly) {
-        // Either secondary window may be absent. Derive its tag from whichever
-        // model-bearing slot exists instead of assuming the weekly one does.
-        const secondaryModel = d.sonnet.model || d.extra.model;
-        const [primaryTag, secondaryTag] = disambiguateTags(d.session.model, secondaryModel);
-        const primary = {tag: primaryTag, session: d.session, weekly: d.weekly};
-        const secondary = {tag: secondaryTag, session: d.sonnet, weekly: d.extra};
-        const pct = pool => ({
-            session: pool.session.pct,
-            weekly: pool.weekly.pct,
-        });
-        const pools = {primary, secondary};
-        return selectPools(pct(primary), pct(secondary),
-            this._settings.get_string('panel-pools'),
-            this._settings.get_int('panel-auto-threshold'),
-            {session: showSession, weekly: showWeekly})
-            .map(name => pools[name]);
     }
 
     _renderDropdown(d, colors) {
@@ -520,7 +479,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             r.valL.text = valueText;
             r.barL.clutter_text.set_markup(barMarkup(pct ?? 0, 18, colors, elapsed));
             if (reset) {
-                r.resetL.text = `↺ resets in ${reset}`;
+                r.resetL.text = `↺ ${reset} 後重設`;
                 r.resetL.visible = true;
             } else {
                 r.resetL.visible = false;
@@ -575,7 +534,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                 // try the next terminal
             }
         }
-        Main.notify('AI Usage Bar', 'Nenhum terminal encontrado (kgx / gnome-terminal / xterm).');
+        Main.notify('AI Usage Bar', '找不到終端機（kgx / gnome-terminal / xterm）。');
     }
 
     destroy() {
@@ -626,13 +585,9 @@ export default class AiUsageBarExtension extends Extension {
         const box = this._settings.get_string('panel-box') || 'right';
         const index = Math.max(0, this._settings.get_int('panel-index'));
 
-        this._indicators = [];
-
         const vendors = ['openai', 'openrouter', 'antigravity'];
 
         vendors.forEach((vendor, offset) => {
-            console.log(`AIUB: creating vendor=${vendor}`);
-            console.log(`AIUB: creating vendor=${vendor}, role=${ROLE}-${vendor}`);
             const indicator = new Indicator(
                 this._settings,
                 () => this.openPreferences(),

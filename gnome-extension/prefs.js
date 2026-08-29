@@ -10,15 +10,12 @@ import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Ex
 
 // ── AI 服務商 login / config ────────────────────────────────────────────────
 const VENDOR_AUTH = [
-    {id: 'anthropic', name: 'Claude', kind: 'oauth', cli: 'claude', login: 'claude', pkg: '@anthropic-ai/claude-code'},
-    {id: 'openai', name: 'Codex', kind: 'oauth', cli: 'codex', login: 'codex login', pkg: '@openai/codex'},
+    {id: 'openai', name: 'GPT', kind: 'oauth', cli: 'codex', login: 'codex login', pkg: '@openai/codex'},
+    {id: 'openrouter', name: 'OpenRouter', kind: 'apikey', env: 'OPENROUTER_API_KEY'},
     // Local-server vendor: there is no separate credential or npm-installable
     // login helper. If `agy` exists we can open it; the app and IDE are equally
     // valid sources and are managed outside this extension.
-    {id: 'antigravity', name: 'Google Antigravity', kind: 'local', cli: 'agy'},
-    {id: 'zai', name: 'Z.AI (GLM)', kind: 'apikey', env: 'ZAI_API_KEY'},
-    {id: 'openrouter', name: 'OpenRouter', kind: 'apikey', env: 'OPENROUTER_API_KEY'},
-    {id: 'deepseek', name: 'DeepSeek', kind: 'apikey', env: 'DEEPSEEK_API_KEY'},
+    {id: 'antigravity', name: 'Gemini', kind: 'local', cli: 'agy'},
 ];
 
 // The config file the Rust binary would actually read. It resolves the
@@ -132,12 +129,12 @@ function oauthCommand(v) {
     return [
         `export PATH="$HOME/.local/bin:$PATH";`,
         `if command -v ${v.cli} >/dev/null 2>&1; then ${v.login};`,
-        `else echo "⚠ ${v.cli} nao encontrado.";`,
-        `echo "Instalo em ~/.local sem sudo (npm --prefix). Pacote: ${v.pkg}"; echo;`,
-        `read -p "Instalar agora? [y/N] " a;`,
+        `else echo "⚠ 找不到 ${v.cli}。";`,
+        `echo "將使用 npm --prefix 安裝至 ~/.local，不需要 sudo。套件：${v.pkg}"; echo;`,
+        `read -p "現在安裝？[y/N] " a;`,
         `if [ "$a" = y ] || [ "$a" = Y ]; then npm i -g --prefix "$HOME/.local" ${v.pkg} && hash -r && ${v.login}; fi;`,
         `fi;`,
-        `echo; read -p "Enter para fechar..."`,
+        `echo; read -p "按 Enter 關閉..."`,
     ].join(' ');
 }
 
@@ -213,31 +210,6 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
         settings.bind('show-extra', showExtra, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showExtra);
 
-        // Only Antigravity reports two independent pools today; for every other
-        // vendor these rows are inert, which the subtitle spells out.
-        const poolLabels = [_('兩者'), _('僅第一個'), _('僅第二個'), _('自動')];
-        const poolValues = ['both', 'primary', 'secondary', 'auto'];
-        const pools = new Adw.ComboRow({
-            title: _('面板顯示的額度池'),
-            subtitle: _('適用於具有兩個獨立額度池的服務（例如 Antigravity：Gemini 與 Claude & GPT OSS）'),
-            model: Gtk.StringList.new(poolLabels),
-        });
-        bindCombo(settings, 'panel-pools', pools, poolValues);
-        display.add(pools);
-
-        const autoThreshold = new Adw.SpinRow({
-            title: _('自動切換門檻（%）'),
-            subtitle: _('第一個額度池超過此使用率時，自動切換至另一個'),
-            adjustment: new Gtk.Adjustment({lower: 50, upper: 100, step_increment: 1, page_increment: 5}),
-        });
-        settings.bind('panel-auto-threshold', autoThreshold, 'value', Gio.SettingsBindFlags.DEFAULT);
-        display.add(autoThreshold);
-
-        const syncThreshold = () =>
-            autoThreshold.set_sensitive(settings.get_string('panel-pools') === 'auto');
-        syncThreshold();
-        settings.connect('changed::panel-pools', syncThreshold);
-
         const showPercent = new Adw.SwitchRow({title: _('顯示百分比／數值')});
         settings.bind('show-percent', showPercent, 'active', Gio.SettingsBindFlags.DEFAULT);
         display.add(showPercent);
@@ -278,15 +250,6 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
         });
         settings.bind('refresh-interval', interval, 'value', Gio.SettingsBindFlags.DEFAULT);
         data.add(interval);
-
-        const vendorList = ['anthropic', 'openai', 'zai', 'openrouter', 'deepseek', 'antigravity'];
-        const vendor = new Adw.ComboRow({
-            title: _('AI 服務商'),
-            subtitle: _('Anthropic 與 Antigravity 提供 5 小時及每週額度資訊'),
-            model: Gtk.StringList.new(vendorList),
-        });
-        bindCombo(settings, 'vendor', vendor, vendorList);
-        data.add(vendor);
 
         const binPath = new Adw.EntryRow({title: _('執行檔路徑（留空＝自動偵測）')});
         settings.bind('binary-path', binPath, 'text', Gio.SettingsBindFlags.DEFAULT);
@@ -399,7 +362,7 @@ export default class AiUsageBarPrefs extends ExtensionPreferences {
         }
 
         // Re-check when the window regains focus (e.g., after logging in via
-        // the terminal) — fixes the "still shows não logado" loop.
+        // the terminal) so the login state is refreshed immediately.
         window.connect('notify::is-active', () => {
             if (window.is_active)
                 updates.forEach(u => u());

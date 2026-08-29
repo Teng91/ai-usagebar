@@ -30,7 +30,7 @@ assert.deepEqual(formatFields, [
     '{scoped_model}', '{scoped_pct}', '{scoped_reset}', '{session_elapsed}',
     '{weekly_elapsed}', '{scoped_elapsed}', '{vendor_short}',
     '{extra_model}', '{extra_reset}', '{extra_elapsed}',
-    '{session_model}', '{weekly_model}', '__aiub_end__',
+    '{session_model}', '{weekly_model}', '{or_balance}', '__aiub_end__',
 ]);
 assert.deepEqual(FIELD, {
     plan: 0, sessionPct: 1, sessionReset: 2, weeklyPct: 3, weeklyReset: 4,
@@ -39,7 +39,7 @@ assert.deepEqual(FIELD, {
     sessionElapsed: 13, weeklyElapsed: 14, scopedElapsed: 15, vendorShort: 16,
     extraModel: 17, extraReset: 18, extraElapsed: 19,
     sessionModel: 20, weeklyModel: 21,
-    sentinel: 22,
+    orBalance: 22, sentinel: 23,
 });
 // Appended fields must not disturb the indices an older binary already fills.
 assert.equal(FIELD.vendorShort, 16);

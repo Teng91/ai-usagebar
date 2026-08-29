@@ -1,5 +1,10 @@
 # ai-usagebar
 
+> **Fork note:** This fork customizes the GNOME Shell integration for three
+> dedicated top-panel indicators: **GPT**, **OpenRouter**, and **Gemini**. The
+> CLI, TUI, Omarchy, KDE, and macOS documentation below continues to describe
+> the broader upstream `ai-usagebar` project.
+
 Native Omarchy Quattro panel, Waybar widget, and tabbed TUI for AI plan usage across **Claude**, **Codex/ChatGPT**, **Z.AI (GLM)**, **OpenRouter**, **DeepSeek**, **Kimi**, **Nous Research**, **OpenCode Go**, and other supported AI coding services.
 
 ai-usagebar began as a Rust port of
@@ -424,11 +429,12 @@ privileges, and does not overwrite user configuration.
 | Integration | Supported providers | Notes |
 |---|---|---|
 | [macOS menu bar](macos/README.md) | Claude, Codex, Z.AI, OpenRouter, DeepSeek, Kimi, Kilo, Novita, Moonshot, Grok (xAI), Anthropic API, Cursor, Google Antigravity | Thirteen providers. |
-| [GNOME Shell](gnome-extension/README.md) | Claude, Codex, Z.AI, OpenRouter, DeepSeek, Google Antigravity | Antigravity's two quota pools appear as grouped rows. |
+| [GNOME Shell](gnome-extension/README.md) | GPT, OpenRouter, Gemini | Three dedicated top-panel indicators with provider icons; Gemini shows its two weekly quota pools. |
 | [KDE Plasma 6](kde-plasmoid/README.md) | Whatever `usage --json` reports | Provider tabs in the popup; vendor is per applet instance. |
 
-Cursor is not available in the GNOME extension yet. On GNOME, use
-`ai-usagebar --vendor cursor` or open the TUI.
+The customized GNOME extension intentionally displays only these three
+providers. On GNOME, use `ai-usagebar --vendor <vendor>` or open the TUI for
+any other provider supported by the CLI.
 
 ## Community integrations
 
