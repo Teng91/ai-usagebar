@@ -17,7 +17,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import {barMarkup, colorForPct, field, FIELD, FORMAT, hasUsageWindows, integer,
+import {barMarkup, colorForPct, field, FIELD, FORMAT, groupedWeeklyReset, hasUsageWindows, integer,
     isGrouped, markerElapsed, plainTextFromPango,
     splitFormatOutput} from './marker-logic.js';
 
@@ -449,6 +449,9 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                 if (showWeekly && d.extra.pct != null)
                     parts.push(seg('C', d.extra.pct,
                         `${d.extra.pct}%`, d.extra.elapsed));
+                const reset = groupedWeeklyReset(d.weekly.reset, d.extra.reset);
+                if (showWeekly && parts.length > 0 && reset)
+                    parts.push(`<span foreground="${DIM}">↻${esc(reset)}</span>`);
             }
         } else {
             if (d.hasUsageWindows && showSession && d.session.pct != null)

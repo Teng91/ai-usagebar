@@ -126,8 +126,8 @@ ai-usagebar --vendor antigravity --format <format>
 ## Gemini 額度池
 
 Antigravity 會提供 Gemini 與 Claude & GPT OSS 兩個獨立額度池。頂端面板以 `G` 和 `C`
-分別顯示兩個每週用量；兩者各自保留用量百分比、重設時間與 pace marker。關閉「顯示每週
-額度」會同時隱藏這兩段資訊。
+分別顯示兩個每週用量，並在最後只顯示一次 Gemini 池的重設時間；兩個池各自保留
+用量百分比與 pace marker。關閉「顯示每週額度」會同時隱藏這些資訊。
 
 資料來自目前正在執行的 Antigravity App、IDE 或互動式 `agy` 工作階段。如果這些程式都已
 關閉，擴充套件會先顯示 CLI 快取；快取過期後則顯示錯誤狀態。
