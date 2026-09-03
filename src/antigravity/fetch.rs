@@ -10,9 +10,9 @@
 //! loopback port (`--https_server_port 0`), so the port cannot be hardcoded.
 //! Quota lives behind `RetrieveUserQuotaSummary`, which reports two model groups
 //! — Gemini, and Claude/GPT — each holding a 5-hour and a weekly bucket.
-//! `GetUserStatus` carries only the plan name; its per-model `quotaInfo` mirrors
-//! whichever bucket is scarcest and must not be read as a window in its own
-//! right.
+//! Newer IDE builds expose the active model-group quota only through
+//! `GetUserStatus`, while older builds also provide the richer four-bucket
+//! `RetrieveUserQuotaSummary` response. Both shapes are supported.
 
 use std::time::Duration;
 
@@ -114,6 +114,7 @@ struct Session {
     csrf: Option<String>,
     plan: String,
     account: String,
+    status: serde_json::Value,
 }
 
 /// Walk every candidate language server until one identifies itself. A machine
@@ -131,18 +132,29 @@ async fn open_session(client: &reqwest::Client) -> Result<Session> {
     }
 
     let mut errors = Vec::new();
+    let process_tokens = candidate_csrf_tokens();
     for base in bases {
-        let csrf = fetch_csrf(client, &base).await;
-        match post_rpc(client, &base, csrf.as_deref(), STATUS_RPC).await {
-            Ok(v) => {
-                return Ok(Session {
-                    base,
-                    csrf,
-                    plan: plan_from_status(&v),
-                    account: account_key(&v),
-                });
+        let mut candidates = Vec::new();
+        if let Some(token) = fetch_csrf(client, &base).await {
+            candidates.push(Some(token));
+        }
+        candidates.extend(process_tokens.iter().cloned().map(Some));
+        candidates.push(None);
+        candidates.dedup();
+
+        for csrf in candidates {
+            match post_rpc(client, &base, csrf.as_deref(), STATUS_RPC).await {
+                Ok(v) => {
+                    return Ok(Session {
+                        base,
+                        csrf,
+                        plan: plan_from_status(&v),
+                        account: account_key(&v),
+                        status: v,
+                    });
+                }
+                Err(e) => errors.push(e),
             }
-            Err(e) => errors.push(e),
         }
     }
     Err(select_probe_error(errors))
@@ -210,11 +222,69 @@ async fn fetch_live(
     client: &reqwest::Client,
     session: Result<Session>,
 ) -> Result<AntigravitySnapshot> {
-    let session = session?;
-    let quota = post_rpc(client, &session.base, session.csrf.as_deref(), QUOTA_RPC).await?;
-    let mut snap = parse_quota_summary(&quota, session.plan)?;
-    snap.account = session.account;
+    let Session {
+        base,
+        csrf,
+        plan,
+        account,
+        status,
+    } = session?;
+    let mut snap = match post_rpc(client, &base, csrf.as_deref(), QUOTA_RPC).await {
+        Ok(quota) => parse_quota_summary(&quota, plan)?,
+        Err(AppError::Http { status: 404, .. }) => parse_status_quota(&status, plan)?,
+        Err(e) => return Err(e),
+    };
+    snap.account = account;
     Ok(snap)
+}
+
+/// Extract `--csrf_token VALUE` from a NUL-separated process command line.
+/// The value is bounded because `/proc` is still external input and a token is
+/// only ever a short opaque string.
+fn csrf_arg_from_cmdline(cmdline: &[u8]) -> Option<String> {
+    let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
+    args.windows(2)
+        .find(|pair| pair[0] == b"--csrf_token")
+        .and_then(|pair| {
+            let value = pair[1];
+            (!value.is_empty() && value.len() <= 512)
+                .then(|| String::from_utf8_lossy(value).into_owned())
+        })
+}
+
+/// Current Linux IDE builds no longer publish the CSRF token in their root
+/// HTML, but the token is passed to the local language server on startup.
+#[cfg(target_os = "linux")]
+fn candidate_csrf_tokens() -> Vec<String> {
+    let mut tokens = Vec::new();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return tokens;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(comm) = std::fs::read_to_string(path.join("comm")) else {
+            continue;
+        };
+        let exe = std::fs::read_link(path.join("exe")).ok();
+        if !is_antigravity_process(&comm, exe.as_deref().and_then(|p| p.to_str())) {
+            continue;
+        }
+        let Some(token) = std::fs::read(path.join("cmdline"))
+            .ok()
+            .and_then(|bytes| csrf_arg_from_cmdline(&bytes))
+        else {
+            continue;
+        };
+        if !tokens.contains(&token) {
+            tokens.push(token);
+        }
+    }
+    tokens
+}
+
+#[cfg(not(target_os = "linux"))]
+fn candidate_csrf_tokens() -> Vec<String> {
+    Vec::new()
 }
 
 /// Identity of the signed-in account, fingerprinted rather than stored in
@@ -378,6 +448,86 @@ pub fn parse_quota_summary(v: &serde_json::Value, plan: String) -> Result<Antigr
         weekly,
         third_party_session: tp_5h,
         third_party_weekly: tp_weekly,
+    })
+}
+
+/// Newer Antigravity IDE builds removed `RetrieveUserQuotaSummary` and expose
+/// one effective quota per model family in `GetUserStatus`. Every model in a
+/// family normally repeats the same value; taking the least remaining value
+/// stays conservative if the server ever returns a mixed set.
+///
+/// An exhausted model deliberately omits `remainingFraction` while retaining
+/// `resetTime`. The IDE presents that shape as "Model quota reached", so it is
+/// zero remaining rather than unknown data.
+fn parse_status_quota(v: &serde_json::Value, plan: String) -> Result<AntigravitySnapshot> {
+    let configs = v["userStatus"]["cascadeModelConfigData"]["clientModelConfigs"]
+        .as_array()
+        .ok_or_else(|| AppError::Other("antigravity: user status has no model quotas".into()))?;
+
+    let mut gemini: Option<(f64, Option<DateTime<Utc>>)> = None;
+    let mut third_party: Option<(f64, Option<DateTime<Utc>>)> = None;
+
+    for config in configs {
+        let label = config["label"].as_str().unwrap_or_default();
+        let lower = label.to_lowercase();
+        let slot = if lower.contains("gemini") {
+            &mut gemini
+        } else if lower.contains("claude") || lower.contains("gpt") {
+            &mut third_party
+        } else {
+            continue;
+        };
+        let Some(quota) = config.get("quotaInfo").and_then(|q| q.as_object()) else {
+            continue;
+        };
+        let reset = parse_reset(
+            quota.get("resetTime").unwrap_or(&serde_json::Value::Null),
+            "model quota resetTime",
+        )?;
+        let remaining = match quota.get("remainingFraction") {
+            Some(value) if !value.is_null() => value
+                .as_f64()
+                .filter(|f| f.is_finite() && (0.0..=1.0).contains(f))
+                .ok_or_else(|| {
+                    AppError::Schema(format!(
+                        "antigravity: model {label} has no valid remainingFraction in 0..=1"
+                    ))
+                })?,
+            _ if reset.is_some() => 0.0,
+            _ => continue,
+        };
+        if slot
+            .as_ref()
+            .is_none_or(|(current, _)| remaining < *current)
+        {
+            *slot = Some((remaining, reset));
+        }
+    }
+
+    let (gemini_remaining, gemini_reset) = gemini.ok_or_else(|| {
+        AppError::Other("antigravity: user status has no Gemini model quota".into())
+    })?;
+    let weekly = UsageWindow {
+        utilization_pct: pct_used(gemini_remaining),
+        resets_at: gemini_reset,
+        window_duration: chrono::Duration::days(7),
+    };
+    let third_party_weekly = third_party.map(|(remaining, resets_at)| UsageWindow {
+        utilization_pct: pct_used(remaining),
+        resets_at,
+        window_duration: chrono::Duration::days(7),
+    });
+
+    Ok(AntigravitySnapshot {
+        plan,
+        account: String::new(),
+        // The legacy snapshot contract requires a primary session window.
+        // Weekly-only IDE builds repeat their one effective Gemini quota here;
+        // compact native surfaces intentionally render the weekly slot only.
+        session: weekly.clone(),
+        weekly,
+        third_party_session: None,
+        third_party_weekly,
     })
 }
 
@@ -1139,6 +1289,58 @@ mod tests {
             75
         );
         assert_eq!(snap.third_party_weekly.as_ref().unwrap().utilization_pct, 0);
+    }
+
+    #[test]
+    fn status_quota_treats_missing_fraction_with_reset_as_exhausted() {
+        let status = serde_json::json!({
+            "userStatus": {
+                "cascadeModelConfigData": {"clientModelConfigs": [
+                    {"label": "Gemini 3.1 Pro (High)", "quotaInfo": {
+                        "resetTime": "2026-09-04T15:27:54Z"
+                    }},
+                    {"label": "Gemini 3.6 Flash", "quotaInfo": {
+                        "remainingFraction": 0.25,
+                        "resetTime": "2026-09-04T15:27:54Z"
+                    }},
+                    {"label": "Claude Sonnet 4.6", "quotaInfo": {
+                        "remainingFraction": 0.399797,
+                        "resetTime": "2026-09-04T16:02:55Z"
+                    }}
+                ]}
+            }
+        });
+
+        let snap = parse_status_quota(&status, "Pro".into()).unwrap();
+        assert_eq!(snap.weekly.utilization_pct, 100);
+        assert_eq!(snap.session.utilization_pct, 100);
+        assert_eq!(snap.third_party_weekly.unwrap().utilization_pct, 60);
+        assert!(snap.third_party_session.is_none());
+    }
+
+    #[test]
+    fn status_quota_rejects_invalid_present_fraction() {
+        let status = serde_json::json!({
+            "userStatus": {"cascadeModelConfigData": {"clientModelConfigs": [{
+                "label": "Gemini Pro",
+                "quotaInfo": {"remainingFraction": "none", "resetTime": "2026-09-04T15:27:54Z"}
+            }]}}
+        });
+        let err = parse_status_quota(&status, "Pro".into()).unwrap_err();
+        assert!(err.to_string().contains("remainingFraction"), "{err}");
+    }
+
+    #[test]
+    fn csrf_token_is_read_from_nul_separated_process_args() {
+        assert_eq!(
+            csrf_arg_from_cmdline(b"language_server\0--csrf_token\0secret-value\0--port\00\0"),
+            Some("secret-value".into())
+        );
+        assert_eq!(csrf_arg_from_cmdline(b"language_server\0--port\00\0"), None);
+        assert_eq!(
+            csrf_arg_from_cmdline(b"language_server\0--csrf_token\0\0"),
+            None
+        );
     }
 
     #[test]

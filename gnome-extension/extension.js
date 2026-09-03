@@ -18,7 +18,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {barMarkup, colorForPct, field, FIELD, FORMAT, groupedWeeklyReset, hasUsageWindows, integer,
-    isGrouped, markerElapsed, plainTextFromPango,
+    isGrouped, isStaleFormatOutput, markerElapsed, plainTextFromPango,
     splitFormatOutput} from './marker-logic.js';
 
 const ROLE = 'ai-usagebar';
@@ -360,6 +360,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         }
         this._data = {
             plan: field(f[FIELD.plan]),
+            stale: isStaleFormatOutput(f[FIELD.sentinel]),
             orBalance: field(f[FIELD.orBalance]),
             hasUsageWindows: hasUsageWindows(f[FIELD.vendorShort]),
             grouped: isGrouped(f[FIELD.sessionModel]),
@@ -462,6 +463,9 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                 d.extra.pct != null && d.extra.spent && d.extra.limit)
                 parts.push(seg('ex', d.extra.pct, d.extra.spent, null)); // $ budget → no meta
         }
+
+        if (d.stale)
+            parts.push(`<span foreground="${DIM}">⏸</span>`);
 
         const gap = `<span foreground="${DIM}">   </span>`;
         this._label.clutter_text.set_markup(parts.join(gap) || ' ');

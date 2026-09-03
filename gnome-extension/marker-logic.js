@@ -34,6 +34,13 @@ export function splitFormatOutput(text) {
     return String(text).split(';;');
 }
 
+// Rust appends the pause glyph after the complete custom format when it had to
+// fall back to stale cache. FORMAT deliberately ends in a sentinel, so inspect
+// that field instead of allowing the suffix to corrupt a numeric value.
+export function isStaleFormatOutput(sentinel) {
+    return String(sentinel ?? '').includes('⏸');
+}
+
 // The CLI output is Pango markup. Strip only tags first, then decode one layer
 // of XML entities so API labels escaped by Rust display as literal text rather
 // than "&amp;". Decoding after tag removal cannot reintroduce active markup.
