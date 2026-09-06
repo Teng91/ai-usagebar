@@ -9,6 +9,25 @@ Each release is also published at
 
 ## [Unreleased]
 
+### Added
+
+- Command Code renders the monthly credit allowance as a full third window:
+  the Quattro panel, TUI, and Overview show a `Monthly` progress row with the
+  derived spend (`$20.72 of $70.00`), a `Resets` countdown from the
+  subscription's billing period end, and the Overview gains a monthly mini
+  bar. New placeholders `{cc_monthly_pct}`, `{cc_monthly_reset}`,
+  `{cc_monthly_used}`, `{cc_monthly_cap}`, and `{cc_credits_reset}`; the bar
+  headline and severity now consider the monthly window when it is the
+  closest to its cap. An unrecognised plan or a missing ledger leaves the
+  row out rather than guessing a denominator.
+
+- The KDE plasmoid offers a **one card per vendor** popup layout beside the
+  existing provider tabs, selectable per applet instance. The cards are drawn
+  entirely from the aggregate `usage --json` report — labels, windows,
+  severities, staleness and error text all come from Rust — so a newly added
+  provider gets a card with no widget change. Provider tabs remain the
+  default and are unchanged.
+
 ### Changed
 
 - `make test` fails if a changelog entry appears under two versions, or if one
@@ -28,7 +47,6 @@ Each release is also published at
   `rate_limit_reset_credits.credits`. A wrong *type* is still drift: a string or
   a number where a collection belongs is refused rather than read as empty.
   Reported within a day by three people independently — thank you.
-
 ## [1.11.0] — 2026-09-05
 
 ### Security
