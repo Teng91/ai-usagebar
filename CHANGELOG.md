@@ -28,6 +28,14 @@ Each release is also published at
   provider gets a card with no widget change. Provider tabs remain the
   default and are unchanged.
 
+### Changed
+
+- `make test` fails if a changelog entry appears under two versions, or if one
+  release section repeats a category heading. Both are what a merge produces
+  when a branch predates the last tag, and both had happened here before — the
+  documented remedy was a manual `git diff` that the AUR build cannot run and
+  that a person has to remember.
+
 ### Fixed
 
 - **Codex works again on accounts with no extra limits.** 1.11.0 added
@@ -39,7 +47,6 @@ Each release is also published at
   `rate_limit_reset_credits.credits`. A wrong *type* is still drift: a string or
   a number where a collection belongs is refused rather than read as empty.
   Reported within a day by three people independently — thank you.
-
 ## [1.11.0] — 2026-09-05
 
 ### Security
