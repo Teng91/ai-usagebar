@@ -27,6 +27,14 @@ When cutting a new version (patch, minor, or major):
      to a shipped release with no removed line for the grep to find. It passed
      clean while the section was wrong.
 
+     `make test` now also enforces this without git: a guard test fails if any
+     changelog entry appears under two versions, or if one section repeats a
+     category heading. The manual comparison above stays because it is
+     stronger for the newest section — the guard cannot tell a *reworded*
+     entry from a new one — but the automated check is what catches a
+     conflict resolution that quietly copies an entry into a published
+     section, which is how it happened the third time.
+
      The cause is the same both times: a PR branched before the last tag
      carries its entries under `[Unreleased]`, and git merges them *cleanly*
      into whatever now sits at that position — which is the section you just

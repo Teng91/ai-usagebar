@@ -9,6 +9,14 @@ Each release is also published at
 
 ## [Unreleased]
 
+### Changed
+
+- `make test` fails if a changelog entry appears under two versions, or if one
+  release section repeats a category heading. Both are what a merge produces
+  when a branch predates the last tag, and both had happened here before — the
+  documented remedy was a manual `git diff` that the AUR build cannot run and
+  that a person has to remember.
+
 ### Fixed
 
 - **Codex works again on accounts with no extra limits.** 1.11.0 added
