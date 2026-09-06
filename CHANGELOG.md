@@ -11,10 +11,15 @@ Each release is also published at
 
 ### Fixed
 
-- OpenAI (Codex) usage parsing treats explicit `null` for `additional_rate_limits`,
-  `model_usage`, and `rate_limit_reset_credits.credits` as empty rather than schema
-  drift. OpenAI returns `"additional_rate_limits": null` for accounts with no extra
-  limits, which previously surfaced as `⚠ API schema drift ... expected a sequence`.
+- **Codex works again on accounts with no extra limits.** 1.11.0 added
+  `additional_rate_limits` and `model_usage` as plain collections, and OpenAI
+  sends `null` — not `[]`/`{}` — when an account has none. `#[serde(default)]`
+  covers a *missing* field but not a present-but-null one, so the whole usage
+  response failed and Waybar showed `⚠ API schema drift … expected a sequence`.
+  Explicit `null` is now read as empty for those two and for
+  `rate_limit_reset_credits.credits`. A wrong *type* is still drift: a string or
+  a number where a collection belongs is refused rather than read as empty.
+  Reported within a day by three people independently — thank you.
 
 ## [1.11.0] — 2026-09-05
 
