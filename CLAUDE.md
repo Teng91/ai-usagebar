@@ -35,11 +35,12 @@ When cutting a new version (patch, minor, or major):
      conflict resolution that quietly copies an entry into a published
      section, which is how it happened the third time.
 
-     The cause is the same both times: a PR branched before the last tag
+     The cause is the same every time: a branch that predates the last tag
      carries its entries under `[Unreleased]`, and git merges them *cleanly*
      into whatever now sits at that position — which is the section you just
-     published. It happened to v1.6.0 (#127) and again to v1.8.0 (#129). A
-     clean merge is not evidence here; the comparison is.
+     published. It happened to v1.6.0 (#127), to v1.8.0 (#129), and to
+     v1.11.0 when a maintainer resolved #152's conflict with a script. A clean
+     merge is not evidence here; the comparison is, and now the guard is too.
 3. **Bump `packaging/aur/PKGBUILD`** — `pkgver=X.Y.Z`, `pkgrel=1`, reset `sha256sums` to `'SKIP'`.
 4. **Bump `packaging/aur/PKGBUILD-bin`** — same `pkgver`, `pkgrel=1`, reset both
    `sha256sums_x86_64` and `sha256sums_aarch64` to `'SKIP'`.
