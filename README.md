@@ -41,6 +41,7 @@ codebase.
 ## Reference guides
 
 - [Configuration](docs/configuration.md)
+- [TUI providers and enablement](docs/configuration.md#tui-providers-and-enablement)
 - [Claude accounts](docs/claude-accounts.md)
 - [Format placeholders](docs/format-placeholders.md)
 - [Provider endpoints and live tests](docs/vendor-endpoints.md)
@@ -321,6 +322,51 @@ macOS's `security` tool to read and refresh the `Claude Code-credentials` item.
 The optional config file is `~/.config/ai-usagebar/config.toml`. Claude,
 Codex, Z.AI, and OpenRouter are enabled by default; other providers are
 opt-in.
+
+### TUI providers and enablement
+
+The TUI shows one tab for every provider whose config section has
+`enabled = true`. It does not mean that every provider is being queried: a
+provider may still need an API key, an official CLI login, or a running local
+application. Disable anything you do not use to keep the TUI focused and to
+avoid unnecessary requests.
+
+| TUI tab | Config section | Integration source | Default |
+| --- | --- | --- | --- |
+| Claude | `[anthropic]` | Claude Code OAuth / credentials file | On |
+| Anthropic API | `[anthropic_api]` | Anthropic organization admin API key | Off |
+| Codex | `[openai]` | OpenAI Codex OAuth (`~/.codex/auth.json`) | On |
+| Z.AI (GLM) | `[zai]` | Z.AI API key | On |
+| OpenRouter | `[openrouter]` | OpenRouter API key; named accounts supported | On |
+| DeepSeek | `[deepseek]` | DeepSeek API key | Off |
+| Kimi | `[kimi]` | Moonshot/Kimi API key | Off |
+| Kilo | `[kilo]` | Kilo API key | Off |
+| Novita | `[novita]` | Novita API key | Off |
+| Moonshot | `[moonshot]` | Moonshot API key | Off |
+| Grok | `[grok]` | xAI management API key | Off |
+| SuperGrok | `[supergrok]` | Official `grok` CLI login | Off |
+| Antigravity | `[antigravity]` | Local Antigravity / `agy` language server | Off |
+| Cursor | `[cursor]` | Cursor IDE state or `cursor-agent` login | Off |
+| MiniMax | `[minimax]` | MiniMax API key | Off |
+| Kiro | `[kiro]` | `kiro-cli login` session | Off |
+| Nous Research | `[nous]` | Nous Research API key | Off |
+| OpenCode Go | `[opencode-go]` | OpenCode Go API key | Off |
+
+To change the list, edit the matching section:
+
+```toml
+[zai]
+enabled = false
+
+[antigravity]
+enabled = true
+```
+
+You can also open the TUI Settings overlay with `s`; saving a provider's
+credentials enables it, and clearing its key removes the inline key. Restart
+the TUI after changing enablement so its tabs are rebuilt. The binary still
+contains integrations for all providers above, but disabled providers are not
+fetched or shown in the normal TUI tab list.
 
 A minimal example:
 

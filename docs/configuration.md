@@ -2,8 +2,10 @@
 
 The config file is `~/.config/ai-usagebar/config.toml`. All fields are optional.
 Claude, Codex, Z.AI, and OpenRouter are enabled by default; other providers are
-opt-in. The commented example shows the defaults and provider-specific
-settings.
+opt-in. The TUI shows one tab per enabled provider. See the [provider list and
+enablement guide](../README.md#tui-providers-and-enablement) for the complete
+integration matrix. The commented example shows the defaults and
+provider-specific settings.
 
 ```toml
 [ui]
