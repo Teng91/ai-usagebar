@@ -371,11 +371,13 @@ pub fn plan_from_status(v: &serde_json::Value) -> String {
 // Quota parsing
 // ---------------------------------------------------------------------------
 
-/// Map a `RetrieveUserQuotaSummary` payload onto the four usage windows.
+/// Map a `RetrieveUserQuotaSummary` payload onto the available usage windows.
 ///
 /// Buckets are keyed by `bucketId` (`gemini-5h`, `gemini-weekly`, `3p-5h`,
 /// `3p-weekly`), falling back to the group display name plus the `window`
-/// discriminator so a renamed bucket id still lands in the right slot.
+/// discriminator so a renamed bucket id still lands in the right slot. agy
+/// 2.12 removed both 5-hour buckets; the required legacy session field mirrors
+/// Gemini weekly for that shape while native surfaces render weekly only.
 pub fn parse_quota_summary(v: &serde_json::Value, plan: String) -> Result<AntigravitySnapshot> {
     let groups = v["response"]["groups"]
         .as_array()
@@ -433,12 +435,10 @@ pub fn parse_quota_summary(v: &serde_json::Value, plan: String) -> Result<Antigr
         }
     }
 
-    let session = gemini_5h.ok_or_else(|| {
-        AppError::Other("antigravity: quota summary has no Gemini 5h bucket".into())
-    })?;
     let weekly = gemini_weekly.ok_or_else(|| {
         AppError::Other("antigravity: quota summary has no Gemini weekly bucket".into())
     })?;
+    let session = gemini_5h.unwrap_or_else(|| weekly.clone());
 
     Ok(AntigravitySnapshot {
         plan,
@@ -1289,6 +1289,31 @@ mod tests {
             75
         );
         assert_eq!(snap.third_party_weekly.as_ref().unwrap().utilization_pct, 0);
+    }
+
+    /// Captured from agy 2.12.2, which reports weekly buckets only.
+    #[test]
+    fn weekly_only_quota_summary_is_supported() {
+        let v = serde_json::json!({"response": {"groups": [
+            {"displayName": "Gemini Models", "buckets": [{
+                "bucketId": "gemini-weekly",
+                "window": "weekly",
+                "remainingFraction": 0.8404392,
+                "resetTime": "2026-09-14T08:01:38Z"
+            }]},
+            {"displayName": "Claude and GPT models", "buckets": [{
+                "bucketId": "3p-weekly",
+                "window": "weekly",
+                "remainingFraction": 1.0,
+                "resetTime": "2026-09-14T08:52:35Z"
+            }]}
+        ]}});
+
+        let snap = parse_quota_summary(&v, "Starter".into()).unwrap();
+        assert_eq!(snap.weekly.utilization_pct, 16);
+        assert_eq!(snap.session, snap.weekly);
+        assert_eq!(snap.third_party_weekly.unwrap().utilization_pct, 0);
+        assert!(snap.third_party_session.is_none());
     }
 
     #[test]

@@ -464,9 +464,6 @@ class AiUsageBarIndicator extends PanelMenu.Button {
                 parts.push(seg('ex', d.extra.pct, d.extra.spent, null)); // $ budget → no meta
         }
 
-        if (d.stale)
-            parts.push(`<span foreground="${DIM}">⏸</span>`);
-
         const gap = `<span foreground="${DIM}">   </span>`;
         this._label.clutter_text.set_markup(parts.join(gap) || ' ');
     }
