@@ -17,7 +17,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import {barMarkup, colorForPct, field, FIELD, FORMAT, groupedWeeklyReset, hasUsageWindows, integer,
+import {barMarkup, colorForPct, field, FIELD, FORMAT, hasUsageWindows, integer,
     isGrouped, isStaleFormatOutput, markerElapsed, plainTextFromPango,
     splitFormatOutput} from './marker-logic.js';
 
@@ -422,7 +422,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             if (!showPct && !showBars)
                 toks.push(`<span foreground="${colorForPct(pct, colors)}">${esc(valueText)}</span>`);
             if (reset && reset !== '—')
-                toks.push(`<span foreground="${DIM}">↻${esc(reset)}</span>`);
+                toks.push(`<span foreground="${DIM}">${esc(reset)}</span>`);
             return toks.join(' ');
         };
 
@@ -444,15 +444,17 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             // G = Gemini, C = Claude & GPT OSS. The weekly visibility toggle
             // controls both because neither pool has a 5-hour panel segment.
             if (this._fixedVendor === 'antigravity') {
+                const groupedSeg = (tag, window) => {
+                    const value = seg(tag, window.pct, `${window.pct}%`, window.elapsed);
+                    const reset = field(window.reset);
+                    return reset && reset !== '—'
+                        ? `${value} <span foreground="${DIM}">${esc(reset)}</span>`
+                        : value;
+                };
                 if (showWeekly && d.weekly.pct != null)
-                    parts.push(seg('G', d.weekly.pct,
-                        `${d.weekly.pct}%`, d.weekly.elapsed));
+                    parts.push(groupedSeg('G', d.weekly));
                 if (showWeekly && d.extra.pct != null)
-                    parts.push(seg('C', d.extra.pct,
-                        `${d.extra.pct}%`, d.extra.elapsed));
-                const reset = groupedWeeklyReset(d.weekly.reset, d.extra.reset);
-                if (showWeekly && parts.length > 0 && reset)
-                    parts.push(`<span foreground="${DIM}">↻${esc(reset)}</span>`);
+                    parts.push(groupedSeg('C', d.extra));
             }
         } else {
             if (d.hasUsageWindows && showSession && d.session.pct != null)

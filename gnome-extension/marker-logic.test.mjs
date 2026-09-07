@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {barMarkup, colorForDelta, disambiguateTags, field, FIELD, FORMAT, groupedWeeklyReset, hasUsageWindows, integer,
+import {barMarkup, colorForDelta, disambiguateTags, field, FIELD, FORMAT, hasUsageWindows, integer,
     isGrouped, isStaleFormatOutput, markerElapsed, pickPool, plainTextFromPango, poolAvailable, poolTag,
     selectPools, splitFormatOutput} from './marker-logic.js';
 
@@ -12,11 +12,6 @@ assert.equal(markerElapsed('', 0), null);
 assert.equal(markerElapsed('—', 0), null);
 assert.equal(markerElapsed('1h', null), null);
 
-assert.equal(groupedWeeklyReset('5d 18h', '6d 2h'), '5d 18h');
-assert.equal(groupedWeeklyReset('', '6d 2h'), '6d 2h');
-assert.equal(groupedWeeklyReset('—', '6d 2h'), '6d 2h');
-assert.equal(groupedWeeklyReset('{weekly_reset}', '{extra_reset}'), '');
-assert.equal(groupedWeeklyReset('', ''), '');
 assert.equal(isStaleFormatOutput('__aiub_end__ ⏸'), true);
 assert.equal(isStaleFormatOutput('__aiub_end__'), false);
 assert.equal(isStaleFormatOutput(undefined), false);

@@ -69,18 +69,6 @@ export function markerElapsed(reset, elapsed) {
     return reset && reset !== '—' && Number.isFinite(elapsed) ? elapsed : null;
 }
 
-// The compact Antigravity indicator shows both weekly pools but only has room
-// for one reset marker. Prefer Gemini's reset because it is the primary pool;
-// retain the third-party reset as a fallback when Gemini omits resetTime.
-export function groupedWeeklyReset(primaryReset, secondaryReset) {
-    for (const value of [primaryReset, secondaryReset]) {
-        const reset = field(value);
-        if (reset && reset !== '—')
-            return reset;
-    }
-    return '';
-}
-
 // Balance-only vendors do not expose generic rolling quota windows. Keep this
 // vendor-aware at the native surface so their compatibility aliases cannot
 // turn into confident 0% bars.
