@@ -111,7 +111,6 @@ fn parse_slug(s: &str) -> Option<VendorId> {
         "moonshot" => Some(VendorId::Moonshot),
         "grok" => Some(VendorId::Grok),
         "supergrok" => Some(VendorId::Supergrok),
-        "antigravity" => Some(VendorId::Antigravity),
         "cursor" => Some(VendorId::Cursor),
         "minimax" => Some(VendorId::Minimax),
         "kiro" => Some(VendorId::Kiro),

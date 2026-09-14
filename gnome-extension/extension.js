@@ -78,7 +78,6 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         const iconNames = {
             openai: 'openai.svg',
             openrouter: 'openrouter.png',
-            antigravity: 'gemini.png',
         };
 
         const iconName = iconNames[this._fixedVendor];
@@ -591,7 +590,7 @@ export default class AiUsageBarExtension extends Extension {
         const box = this._settings.get_string('panel-box') || 'right';
         const index = Math.max(0, this._settings.get_int('panel-index'));
 
-        const vendors = ['openai', 'openrouter', 'antigravity'];
+            const vendors = ['openai', 'openrouter'];
 
         vendors.forEach((vendor, offset) => {
             const indicator = new Indicator(

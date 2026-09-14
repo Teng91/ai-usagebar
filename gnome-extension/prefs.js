@@ -15,7 +15,6 @@ const VENDOR_AUTH = [
     // Local-server vendor: there is no separate credential or npm-installable
     // login helper. If `agy` exists we can open it; the app and IDE are equally
     // valid sources and are managed outside this extension.
-    {id: 'antigravity', name: 'Gemini', kind: 'local', cli: 'agy'},
 ];
 
 // The config file the Rust binary would actually read. It resolves the

@@ -224,7 +224,6 @@ come from environment variables or `config.toml`.
 | Grok (xAI) | Management key | Opt in with `XAI_MANAGEMENT_KEY` or config. An inference key does not work. |
 | SuperGrok | Official Grok Build ACP extension | Opt in, install Grok Build, and run `grok login`. This reports subscription usage, not the Management API balance. |
 | MiniMax | Token Plan subscription key | Opt in with `MINIMAX_API_KEY` or config. Choose the matching global or China region; pay-as-you-go keys do not work. |
-| Google Antigravity | Local Antigravity server | Opt in and keep Antigravity or an interactive `agy` session running. |
 | Cursor | Existing Cursor IDE or `cursor-agent` login | Opt in and sign in once. `cursor-agent` is the headless fallback. |
 | Kiro CLI | Existing kiro-cli login | Opt in and run `kiro-cli login` once. ai-usagebar refreshes the session when needed. |
 | Nous Research | OAuth device flow | Enable `[nous]`, click **Log in with Nous Research** in the Omarchy settings panel, or run `ai-usagebar auth nous login`. Credentials are kept in ai-usagebar's separate platform config directory (`~/.config/ai-usagebar/credentials.json` on Linux). |
@@ -345,7 +344,6 @@ avoid unnecessary requests.
 | Moonshot | `[moonshot]` | Moonshot API key | Off |
 | Grok | `[grok]` | xAI management API key | Off |
 | SuperGrok | `[supergrok]` | Official `grok` CLI login | Off |
-| Antigravity | `[antigravity]` | Local Antigravity / `agy` language server | Off |
 | Cursor | `[cursor]` | Cursor IDE state or `cursor-agent` login | Off |
 | MiniMax | `[minimax]` | MiniMax API key | Off |
 | Kiro | `[kiro]` | `kiro-cli login` session | Off |
@@ -358,8 +356,6 @@ To change the list, edit the matching section:
 [zai]
 enabled = false
 
-[antigravity]
-enabled = true
 ```
 
 You can also open the TUI Settings overlay with `s`; saving a provider's

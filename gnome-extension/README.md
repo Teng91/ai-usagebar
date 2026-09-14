@@ -1,16 +1,15 @@
 # AI Usage Bar — GNOME Shell 擴充套件
 
-這是 [`ai-usagebar`](../README.md) 的客製化 GNOME Shell 前端，會在頂端面板同時建立三個獨立指示器：
+這是 [`ai-usagebar`](../README.md) 的客製化 GNOME Shell 前端，會在頂端面板同時建立兩個獨立指示器：
 
 - **GPT**（底層 vendor ID：`openai`）
 - **OpenRouter**（底層 vendor ID：`openrouter`）
-- **Gemini**（透過 Google Antigravity，底層 vendor ID：`antigravity`）
 
 每個指示器都有自己的服務圖示與原生下拉選單。擴充套件會呼叫同一套
 `ai-usagebar` CLI 取得資料，再使用 GNOME `St` 元件繪製額度、進度條與重設時間；它不會把
 Waybar tooltip 原樣塞進 GNOME 面板。
 
-這個 fork 的 GNOME 前端只顯示上述三項服務。底層 CLI 與 TUI 仍保留上游專案支援的其他
+這個 fork 的 GNOME 前端只顯示上述兩項服務。底層 CLI 與 TUI 仍保留上游專案支援的其他
 AI 服務商。
 
 ![GNOME 頂端面板同時顯示 GPT 的 5 小時與每週額度、OpenRouter 剩餘額度，以及 Gemini 的兩個每週額度池](../screenshots/gnome-usagebar.png)
@@ -19,13 +18,11 @@ AI 服務商。
 
 - **GPT**：顯示 5 小時與每週用量、進度條及重設倒數。
 - **OpenRouter**：直接顯示 `{or_balance}` 回傳的剩餘額度。
-- **Gemini**：顯示 Antigravity 提供的兩個每週額度池；`G` 代表 Gemini，`C` 代表
-  Claude & GPT OSS。
 - 點擊任一指示器會開啟該服務的原生下拉選單。
 - 下拉選單可立即更新資料、開啟 `ai-usagebar-tui`，或進入擴充套件設定。
 - 面板與設定介面使用繁體中文。
 
-三個指示器使用圖片圖示，不需要 Nerd Font。進度條使用等寬字型，確保填滿與未使用區段
+兩個指示器使用圖片圖示，不需要 Nerd Font。進度條使用等寬字型，確保填滿與未使用區段
 能夠整齊對齊。
 
 ## 系統需求
@@ -43,7 +40,6 @@ AI 服務商。
 |---|---|---|
 | GPT | `~/.codex/auth.json` | 安裝 Codex CLI 後執行 `codex login`。憑證會自動重新整理。 |
 | OpenRouter | API Key | 設定 `OPENROUTER_API_KEY`，或在 `config.toml` 的 `[openrouter]` 填入 `api_key`。也可由偏好設定開啟 TUI 設定。 |
-| Gemini | 本機 Antigravity 服務 | 開啟 Antigravity App、IDE 或互動式 `agy` 工作階段；不需要另外登入。 |
 
 ## 開發版安裝
 
@@ -107,7 +103,6 @@ gnome-extensions prefs ai-usagebar@akitaonrails.github.io
 ```text
 ai-usagebar --vendor openai --format <format>
 ai-usagebar --vendor openrouter --format <format>
-ai-usagebar --vendor antigravity --format <format>
 ```
 
 實際使用的 format 為：
