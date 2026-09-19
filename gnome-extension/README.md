@@ -1,9 +1,10 @@
 # AI Usage Bar — GNOME Shell 擴充套件
 
-這是 [`ai-usagebar`](../README.md) 的客製化 GNOME Shell 前端，會在頂端面板同時建立兩個獨立指示器：
+這是 [`ai-usagebar`](../README.md) 的客製化 GNOME Shell 前端，會在頂端面板建立三個獨立指示器：
 
 - **GPT**（底層 vendor ID：`openai`）
 - **OpenRouter**（底層 vendor ID：`openrouter`）
+- **系統資源**（CPU 與記憶體）
 
 每個指示器都有自己的服務圖示與原生下拉選單。擴充套件會呼叫同一套
 `ai-usagebar` CLI 取得資料，再使用 GNOME `St` 元件繪製額度、進度條與重設時間；它不會把
@@ -18,6 +19,7 @@ AI 服務商。
 
 - **GPT**：顯示 5 小時與每週用量、進度條及重設倒數。
 - **OpenRouter**：直接顯示 `{or_balance}` 回傳的剩餘額度。
+- **系統資源**：顯示目前 CPU 與記憶體使用率；點開可查看已用／總記憶體。
 - 點擊任一指示器會開啟該服務的原生下拉選單。
 - 下拉選單可立即更新資料、開啟 `ai-usagebar-tui`，或進入擴充套件設定。
 - 面板與設定介面使用繁體中文。
@@ -40,6 +42,7 @@ AI 服務商。
 |---|---|---|
 | GPT | `~/.codex/auth.json` | 安裝 Codex CLI 後執行 `codex login`。憑證會自動重新整理。 |
 | OpenRouter | API Key | 設定 `OPENROUTER_API_KEY`，或在 `config.toml` 的 `[openrouter]` 填入 `api_key`。也可由偏好設定開啟 TUI 設定。 |
+| 系統資源 | Linux `/proc` | 不需要額外設定；GNOME extension 直接讀取系統資料，不依賴 AI CLI。 |
 
 ## 開發版安裝
 

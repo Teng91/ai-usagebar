@@ -51,6 +51,31 @@ function resolveBinary(settings) {
     return 'ai-usagebar';
 }
 
+function procCpuTicks(contents) {
+    const line = String(contents).split('\n').find(value => value.startsWith('cpu '));
+    const values = line?.trim().split(/\s+/).slice(1).map(Number);
+    if (!values || values.length < 4 || values.some(value => !Number.isFinite(value)))
+        return null;
+    return {
+        total: values.reduce((sum, value) => sum + value, 0),
+        idle: values[3] + (values[4] || 0),
+    };
+}
+
+function procMemory(contents) {
+    const fields = {};
+    for (const line of String(contents).split('\n')) {
+        const match = line.match(/^(MemTotal|MemAvailable):\s+(\d+)/);
+        if (match)
+            fields[match[1]] = Number(match[2]);
+    }
+    if (!Number.isFinite(fields.MemTotal) || !Number.isFinite(fields.MemAvailable) ||
+        fields.MemTotal <= 0 || fields.MemAvailable > fields.MemTotal)
+        return null;
+    const used = fields.MemTotal - fields.MemAvailable;
+    return {used, total: fields.MemTotal, pct: Math.round((used * 100) / fields.MemTotal)};
+}
+
 const Indicator = GObject.registerClass(
 class AiUsageBarIndicator extends PanelMenu.Button {
     _init(settings, openPrefs, fixedVendor) {
@@ -571,6 +596,148 @@ class AiUsageBarIndicator extends PanelMenu.Button {
     }
 });
 
+// A deliberately separate indicator: AI quota requests can take tens of
+// seconds or need network access, while the local system reading should stay
+// quick and refresh independently in the panel. It reads Linux's procfs
+// itself, so it appears as soon as the extension is reloaded; users do not
+// need to first replace an already-installed ai-usagebar binary.
+const SystemUsageIndicator = GObject.registerClass(
+class SystemUsageIndicator extends PanelMenu.Button {
+    _init(settings) {
+        super._init(0.0, 'System usage', false);
+        this._settings = settings;
+        this._timer = 0;
+        this._busy = false;
+        this._refreshPending = false;
+        this._cancellable = null;
+        this._sampleTimer = 0;
+
+        this._label = new St.Label({
+            text: 'CPU … · MEM …',
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'aiub-label',
+        });
+        this.add_child(this._label);
+
+        const header = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        this._details = new St.Label({text: '讀取系統資源中…', x_expand: true, style_class: 'aiub-header'});
+        header.add_child(this._details);
+        this.menu.addMenuItem(header);
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const refresh = new PopupMenu.PopupMenuItem('立即更新');
+        refresh.connect('activate', () => this._refresh());
+        this.menu.addMenuItem(refresh);
+
+        this._intervalId = settings.connect('changed::refresh-interval', () => this._restartTimer());
+        this.menu.connect('open-state-changed', (_menu, open) => {
+            if (open)
+                this._refresh();
+        });
+        this._refresh();
+        this._restartTimer();
+    }
+
+    _restartTimer() {
+        if (this._timer) {
+            GLib.source_remove(this._timer);
+            this._timer = 0;
+        }
+        const secs = Math.max(5, this._settings.get_int('refresh-interval'));
+        this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, secs, () => {
+            this._refresh();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _refresh() {
+        if (this._busy) {
+            this._refreshPending = true;
+            return;
+        }
+        this._busy = true;
+        this._cancellable = new Gio.Cancellable();
+        this._readProc('/proc/stat', firstText => {
+            const first = procCpuTicks(firstText);
+            if (!first) {
+                this._failRead();
+                return;
+            }
+            this._sampleTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                this._sampleTimer = 0;
+                this._readProc('/proc/stat', secondText => {
+                    const second = procCpuTicks(secondText);
+                    const total = second?.total - first.total;
+                    const idle = second?.idle - first.idle;
+                    if (!second || total <= 0 || idle < 0) {
+                        this._failRead();
+                        return;
+                    }
+                    this._readProc('/proc/meminfo', memoryText => {
+                        const memory = procMemory(memoryText);
+                        if (!memory) {
+                            this._failRead();
+                            return;
+                        }
+                        const cpu = Math.max(0, Math.min(100, Math.round(((total - idle) * 100) / total)));
+                        const usedMiB = Math.floor(memory.used / 1024);
+                        const totalMiB = Math.floor(memory.total / 1024);
+                        this._label.clutter_text.set_markup(
+                            `<span foreground="${FG}">CPU ${cpu}% · MEM ${memory.pct}%</span>`);
+                        this._details.text = `CPU: ${cpu}%\n記憶體: ${usedMiB} MiB / ${totalMiB} MiB (${memory.pct}%)`;
+                        this._finishRefresh();
+                    });
+                });
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+    }
+
+    _readProc(path, callback) {
+        const file = Gio.File.new_for_path(path);
+        file.load_contents_async(this._cancellable, (source, result) => {
+            try {
+                const [, bytes] = source.load_contents_finish(result);
+                callback(new TextDecoder().decode(bytes));
+            } catch (e) {
+                if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
+                    this._failRead();
+            }
+        });
+    }
+
+    _failRead() {
+        this._setError('無法讀取 Linux 系統資源');
+        this._finishRefresh();
+    }
+
+    _finishRefresh() {
+        this._busy = false;
+        this._cancellable = null;
+        if (this._refreshPending) {
+            this._refreshPending = false;
+            this._refresh();
+        }
+    }
+
+    _setError(detail) {
+        this._label.clutter_text.set_markup(`<span foreground="${RED}">SYS ⚠</span>`);
+        this._details.text = detail;
+    }
+
+    destroy() {
+        if (this._timer)
+            GLib.source_remove(this._timer);
+        if (this._sampleTimer)
+            GLib.source_remove(this._sampleTimer);
+        if (this._cancellable)
+            this._cancellable.cancel();
+        if (this._intervalId)
+            this._settings.disconnect(this._intervalId);
+        this._timer = this._sampleTimer = this._intervalId = 0;
+        super.destroy();
+    }
+});
+
 export default class AiUsageBarExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
@@ -590,7 +757,7 @@ export default class AiUsageBarExtension extends Extension {
         const box = this._settings.get_string('panel-box') || 'right';
         const index = Math.max(0, this._settings.get_int('panel-index'));
 
-            const vendors = ['openai', 'openrouter'];
+        const vendors = ['openai', 'openrouter'];
 
         vendors.forEach((vendor, offset) => {
             const indicator = new Indicator(
@@ -610,6 +777,11 @@ export default class AiUsageBarExtension extends Extension {
 
             this._indicators.push({role, indicator});
         });
+
+        const systemIndicator = new SystemUsageIndicator(this._settings);
+        const systemRole = `${ROLE}-system`;
+        Main.panel.addToStatusArea(systemRole, systemIndicator, index + vendors.length, box);
+        this._indicators.push({role: systemRole, indicator: systemIndicator});
     }
 
     disable() {
