@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {barMarkup, colorForDelta, disambiguateTags, field, FIELD, FORMAT, hasUsageWindows, integer,
     isGrouped, isStaleFormatOutput, markerElapsed, pickPool, plainTextFromPango, poolAvailable, poolTag,
-    selectPools, splitFormatOutput} from './marker-logic.js';
+    OPENROUTER_RANK_FIELDS, selectPools, splitFormatOutput} from './marker-logic.js';
 
 const colors = {low: 'low', mid: 'mid', high: 'high', critical: 'critical', empty: 'empty'};
 const visibleCells = markup => markup.replace(/<[^>]+>/g, '');
@@ -34,7 +34,17 @@ assert.deepEqual(formatFields, [
     '{scoped_model}', '{scoped_pct}', '{scoped_reset}', '{session_elapsed}',
     '{weekly_elapsed}', '{scoped_elapsed}', '{vendor_short}',
     '{extra_model}', '{extra_reset}', '{extra_elapsed}',
-    '{session_model}', '{weekly_model}', '{or_balance}', '__aiub_end__',
+    '{session_model}', '{weekly_model}', '{or_balance}',
+    '{or_top_1_model}', '{or_top_1_tokens}', '{or_top_1_price}',
+    '{or_top_2_model}', '{or_top_2_tokens}', '{or_top_2_price}',
+    '{or_top_3_model}', '{or_top_3_tokens}', '{or_top_3_price}',
+    '{or_top_4_model}', '{or_top_4_tokens}', '{or_top_4_price}',
+    '{or_top_5_model}', '{or_top_5_tokens}', '{or_top_5_price}',
+    '{or_top_6_model}', '{or_top_6_tokens}', '{or_top_6_price}',
+    '{or_top_7_model}', '{or_top_7_tokens}', '{or_top_7_price}',
+    '{or_top_8_model}', '{or_top_8_tokens}', '{or_top_8_price}',
+    '{or_top_9_model}', '{or_top_9_tokens}', '{or_top_9_price}',
+    '{or_top_10_model}', '{or_top_10_tokens}', '{or_top_10_price}', '__aiub_end__',
 ]);
 assert.deepEqual(FIELD, {
     plan: 0, sessionPct: 1, sessionReset: 2, weeklyPct: 3, weeklyReset: 4,
@@ -43,8 +53,22 @@ assert.deepEqual(FIELD, {
     sessionElapsed: 13, weeklyElapsed: 14, scopedElapsed: 15, vendorShort: 16,
     extraModel: 17, extraReset: 18, extraElapsed: 19,
     sessionModel: 20, weeklyModel: 21,
-    orBalance: 22, sentinel: 23,
+    orBalance: 22,
+    orTop1Model: 23, orTop1Tokens: 24, orTop1Price: 25,
+    orTop2Model: 26, orTop2Tokens: 27, orTop2Price: 28,
+    orTop3Model: 29, orTop3Tokens: 30, orTop3Price: 31,
+    orTop4Model: 32, orTop4Tokens: 33, orTop4Price: 34,
+    orTop5Model: 35, orTop5Tokens: 36, orTop5Price: 37,
+    orTop6Model: 38, orTop6Tokens: 39, orTop6Price: 40,
+    orTop7Model: 41, orTop7Tokens: 42, orTop7Price: 43,
+    orTop8Model: 44, orTop8Tokens: 45, orTop8Price: 46,
+    orTop9Model: 47, orTop9Tokens: 48, orTop9Price: 49,
+    orTop10Model: 50, orTop10Tokens: 51, orTop10Price: 52,
+    sentinel: 53,
 });
+assert.equal(OPENROUTER_RANK_FIELDS.length, 10);
+assert.deepEqual(OPENROUTER_RANK_FIELDS[0], [FIELD.orTop1Model, FIELD.orTop1Price]);
+assert.deepEqual(OPENROUTER_RANK_FIELDS[9], [FIELD.orTop10Model, FIELD.orTop10Price]);
 // Appended fields must not disturb the indices an older binary already fills.
 assert.equal(FIELD.vendorShort, 16);
 // An older binary echoes unknown placeholders back; field() must discard them

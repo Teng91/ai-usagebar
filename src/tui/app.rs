@@ -1180,6 +1180,8 @@ mod tests {
                 is_free_tier: false,
                 limit: None,
                 limit_remaining: None,
+                weekly_leaderboard: Vec::new(),
+                leaderboard_as_of: None,
             }),
             stale: false,
             last_error: None,

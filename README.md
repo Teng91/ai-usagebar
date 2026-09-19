@@ -20,6 +20,8 @@ codebase.
 ## Features
 
 - Per-provider Waybar modules use the same JSON shape and flags as claudebar.
+- An optional Linux system module shows current CPU and memory use alongside
+  the AI quota module.
 - The native Omarchy Quattro plugin follows the shell theme and supports
   keyboard navigation, provider switching, live reset timers, and stale/error
   states.
@@ -492,6 +494,26 @@ repositories and are maintained by their authors, not here.
 
 ## Waybar config
 
+### System resources (Linux)
+
+Add this as a separate module when you want to tell whether a slow response is
+coinciding with local resource pressure. It reads Linux's `/proc/stat` and
+`/proc/meminfo` directly; no background daemon or extra package is required.
+
+```jsonc
+"modules-right": ["custom/system-usage", "custom/aibar", ...],
+
+"custom/system-usage": {
+    "exec": "ai-usagebar system",
+    "return-type": "json",
+    "interval": 5,
+    "tooltip": true
+}
+```
+
+The bar text is `CPU 12% · MEM 47%`; the tooltip also reports used and total
+memory. On non-Linux systems it displays an explanatory warning instead.
+
 ### Single module, scroll-to-cycle (recommended)
 
 Use one bar item and scroll through your vendors. The TUI on-click still shows them all:
@@ -680,6 +702,11 @@ visible with a `↻` marker. If the request fails, the last snapshot remains on
 screen and is marked stale.
 
 OpenRouter uses the same layout for balance, usage by period, and account tier:
+
+Its detail view also shows OpenRouter's top ten models over the latest seven
+complete UTC days, including token volume and current input/output prices per
+million tokens. This data comes from the official OpenRouter Data API and is
+cached with the rest of the provider snapshot.
 
 ![ai-usagebar-tui showing the OpenRouter tab — Credit balance gauge at 98% in red ($13.67 left of $900), Usage by period with today/week/month, paid tier](screenshots/tui-openrouter.png)
 

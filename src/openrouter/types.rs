@@ -3,9 +3,11 @@
 //! Both endpoints wrap their payload in `{ "data": { ... } }`, hence the
 //! generic [`OrEnvelope`] wrapper.
 
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
-use crate::usage::OpenRouterSnapshot;
+use crate::usage::{OpenRouterModelRank, OpenRouterSnapshot};
 
 /// Wrapper used by all OpenRouter v1 endpoints.
 #[derive(Debug, Clone, Deserialize)]
@@ -38,6 +40,69 @@ pub struct KeyData {
     #[serde(deserialize_with = "de_nonnegative_finite")]
     pub usage_monthly: f64,
     pub is_free_tier: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RankingRow {
+    pub date: String,
+    pub model_permaslug: String,
+    #[serde(deserialize_with = "de_u64_string")]
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RankingsMeta {
+    pub end_date: String,
+    pub as_of: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RankingsEnvelope {
+    pub data: Vec<RankingRow>,
+    pub meta: RankingsMeta,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelData {
+    pub id: String,
+    #[serde(default)]
+    pub canonical_slug: String,
+    pub name: String,
+    pub pricing: ModelPricing,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelPricing {
+    #[serde(default, deserialize_with = "de_opt_price")]
+    pub prompt: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_price")]
+    pub completion: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelEndpointsEnvelope {
+    pub data: ModelEndpointsData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelEndpointsData {
+    #[serde(default)]
+    pub endpoints: Vec<ModelEndpoint>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelEndpoint {
+    pub pricing: ModelPricing,
+}
+
+pub fn lowest_endpoint_prices(data: &ModelEndpointsData) -> (Option<f64>, Option<f64>) {
+    let lowest = |price: fn(&ModelPricing) -> Option<f64>| {
+        data.endpoints
+            .iter()
+            .filter_map(|endpoint| price(&endpoint.pricing))
+            .min_by(f64::total_cmp)
+    };
+    (lowest(|p| p.prompt), lowest(|p| p.completion))
 }
 
 fn checked_finite<E: serde::de::Error>(value: f64) -> Result<f64, E> {
@@ -82,6 +147,97 @@ where
         .transpose()
 }
 
+fn de_u64_string<'de, D>(d: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(d)?;
+    value.parse().map_err(serde::de::Error::custom)
+}
+
+fn de_opt_price<'de, D>(d: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // OpenRouter uses "-1" for router products whose price depends on the
+    // model selected at request time. That is "not a fixed price", not schema
+    // drift, and one such catalog row must not discard the entire leaderboard.
+    Ok(Option::<String>::deserialize(d)?
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value >= 0.0))
+}
+
+/// Aggregate daily rows over the seven-day window ending at `meta.end_date`,
+/// then enrich the top rows with display names and current model pricing.
+pub fn weekly_leaderboard(
+    rankings: RankingsEnvelope,
+    models: Vec<ModelData>,
+    limit: usize,
+) -> Vec<OpenRouterModelRank> {
+    let Ok(end) = chrono::NaiveDate::parse_from_str(&rankings.meta.end_date, "%Y-%m-%d") else {
+        return Vec::new();
+    };
+    let start = end - chrono::Duration::days(6);
+    let mut totals: HashMap<String, u64> = HashMap::new();
+    for row in rankings.data {
+        let Ok(date) = chrono::NaiveDate::parse_from_str(&row.date, "%Y-%m-%d") else {
+            continue;
+        };
+        if row.model_permaslug != "other" && (start..=end).contains(&date) {
+            let total = totals.entry(row.model_permaslug).or_default();
+            *total = total.saturating_add(row.total_tokens);
+        }
+    }
+    let mut totals: Vec<_> = totals.into_iter().collect();
+    totals.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    let mut model_by_slug = HashMap::new();
+    for model in models {
+        model_by_slug.insert(model.id.clone(), model.clone());
+        if !model.canonical_slug.is_empty() {
+            // Several variants share the same canonical slug. Preserve the
+            // variant suffix in the lookup key so `:free`/`:batch` can never
+            // overwrite the default paid model (or one another).
+            let canonical_key = model
+                .id
+                .rsplit('/')
+                .next()
+                .and_then(|tail| tail.split_once(':'))
+                .map_or_else(
+                    || model.canonical_slug.clone(),
+                    |(_, variant)| format!("{}:{variant}", model.canonical_slug),
+                );
+            model_by_slug.entry(canonical_key).or_insert(model);
+        }
+    }
+    totals
+        .into_iter()
+        .take(limit)
+        .enumerate()
+        .map(|(index, (model_id, total_tokens))| {
+            let model = model_by_slug.get(&model_id);
+            OpenRouterModelRank {
+                rank: (index + 1) as u16,
+                name: model.map_or_else(
+                    || model_id.clone(),
+                    |m| {
+                        // `/models` prefixes display names with the provider
+                        // (`OpenAI: …`, `DeepSeek: …`), while the rankings UI
+                        // shows the model title alone. Match that public view.
+                        m.name
+                            .split_once(": ")
+                            .map_or_else(|| m.name.clone(), |(_, name)| name.to_string())
+                    },
+                ),
+                prompt_price: model.and_then(|m| m.pricing.prompt),
+                completion_price: model.and_then(|m| m.pricing.completion),
+                model_id: model.map_or(model_id, |m| m.id.clone()),
+                total_tokens,
+            }
+        })
+        .collect()
+}
+
 /// Combine the two endpoint responses into the canonical snapshot.
 pub fn combine(credits: CreditsData, key: KeyData) -> OpenRouterSnapshot {
     let label = if key.label.is_empty() {
@@ -99,6 +255,8 @@ pub fn combine(credits: CreditsData, key: KeyData) -> OpenRouterSnapshot {
         is_free_tier: key.is_free_tier,
         limit: key.limit,
         limit_remaining: key.limit_remaining,
+        weekly_leaderboard: Vec::new(),
+        leaderboard_as_of: None,
     }
 }
 
@@ -205,7 +363,101 @@ mod tests {
             is_free_tier: true,
             limit: None,
             limit_remaining: None,
+            weekly_leaderboard: Vec::new(),
+            leaderboard_as_of: None,
         };
         assert_eq!(s.consumed_pct(), 0);
+    }
+
+    #[test]
+    fn weekly_ranking_uses_last_seven_complete_days_and_enriches_prices() {
+        let rankings: RankingsEnvelope = serde_json::from_str(
+            r#"{"data":[
+                {"date":"2026-09-11","model_permaslug":"old/model","total_tokens":"9999"},
+                {"date":"2026-09-12","model_permaslug":"acme/alpha-202609","total_tokens":"100"},
+                {"date":"2026-09-18","model_permaslug":"acme/alpha-202609","total_tokens":"250"},
+                {"date":"2026-09-18","model_permaslug":"acme/beta","total_tokens":"300"},
+                {"date":"2026-09-18","model_permaslug":"other","total_tokens":"999999"}
+            ],"meta":{"end_date":"2026-09-18","as_of":"2026-09-19T01:00:00Z"}}"#,
+        )
+        .unwrap();
+        let models: OrEnvelope<Vec<ModelData>> = serde_json::from_str(
+            r#"{"data":[
+                {"id":"acme/alpha","canonical_slug":"acme/alpha-202609","name":"Acme: Alpha","pricing":{"prompt":"0.000001","completion":"0.000002"}},
+                {"id":"acme/beta","canonical_slug":"acme/beta","name":"Acme: Beta","pricing":{"prompt":"0","completion":"0"}}
+            ]}"#,
+        )
+        .unwrap();
+
+        let rows = weekly_leaderboard(rankings, models.data, 5);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].name, "Alpha");
+        assert_eq!(rows[0].total_tokens, 350);
+        assert_eq!(rows[0].prompt_price, Some(0.000001));
+        assert_eq!(rows[1].model_id, "acme/beta");
+    }
+
+    #[test]
+    fn variable_router_price_does_not_reject_the_model_catalog() {
+        let models: OrEnvelope<Vec<ModelData>> = serde_json::from_str(
+            r#"{"data":[
+                {"id":"openrouter/auto","canonical_slug":"openrouter/auto","name":"Auto Router","pricing":{"prompt":"-1","completion":"-1"}},
+                {"id":"acme/fixed","canonical_slug":"acme/fixed","name":"Fixed","pricing":{"prompt":"0.000001","completion":"0.000002"}}
+            ]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(models.data.len(), 2);
+        assert_eq!(models.data[0].pricing.prompt, None);
+        assert_eq!(models.data[0].pricing.completion, None);
+        assert_eq!(models.data[1].pricing.prompt, Some(0.000001));
+    }
+
+    #[test]
+    fn canonical_slug_keeps_paid_batch_and_free_variants_distinct() {
+        let rankings: RankingsEnvelope = serde_json::from_str(
+            r#"{"data":[
+                {"date":"2026-09-18","model_permaslug":"deepseek/model-20260731","total_tokens":"300"},
+                {"date":"2026-09-18","model_permaslug":"deepseek/model-20260731:free","total_tokens":"200"},
+                {"date":"2026-09-18","model_permaslug":"deepseek/model-20260731:batch","total_tokens":"100"}
+            ],"meta":{"end_date":"2026-09-18","as_of":"2026-09-19T01:00:00Z"}}"#,
+        )
+        .unwrap();
+        let models: OrEnvelope<Vec<ModelData>> = serde_json::from_str(
+            r#"{"data":[
+                {"id":"deepseek/model","canonical_slug":"deepseek/model-20260731","name":"Paid","pricing":{"prompt":"0.000001","completion":"0.000002"}},
+                {"id":"deepseek/model:batch","canonical_slug":"deepseek/model-20260731","name":"Batch","pricing":{"prompt":"0.0000005","completion":"0.000001"}},
+                {"id":"deepseek/model:free","canonical_slug":"deepseek/model-20260731","name":"Free","pricing":{"prompt":"0","completion":"0"}}
+            ]}"#,
+        )
+        .unwrap();
+
+        let rows = weekly_leaderboard(rankings, models.data, 10);
+        assert_eq!(rows[0].name, "Paid");
+        assert_eq!(rows[0].model_id, "deepseek/model");
+        assert_eq!(rows[0].prompt_price, Some(0.000001));
+        assert_eq!(rows[1].name, "Free");
+        assert_eq!(rows[1].model_id, "deepseek/model:free");
+        assert_eq!(rows[1].prompt_price, Some(0.0));
+        assert_eq!(rows[2].name, "Batch");
+        assert_eq!(rows[2].model_id, "deepseek/model:batch");
+        assert_eq!(rows[2].prompt_price, Some(0.0000005));
+    }
+
+    #[test]
+    fn floor_prices_take_the_lowest_value_across_provider_endpoints() {
+        let envelope: ModelEndpointsEnvelope = serde_json::from_str(
+            r#"{"data":{"endpoints":[
+                {"pricing":{"prompt":"0.00000006","completion":"0.00000018"}},
+                {"pricing":{"prompt":"0.00000004752","completion":"0.00000014256"}},
+                {"pricing":{"prompt":"0.00000004796","completion":"0.00000014388"}}
+            ]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            lowest_endpoint_prices(&envelope.data),
+            (Some(0.00000004752), Some(0.00000014256))
+        );
     }
 }

@@ -13,6 +13,12 @@ fn main() {
     if let Some(Command::Settings { action }) = &cli.command {
         std::process::exit(ai_usagebar::tui::settings::run_cli(action));
     }
+    // Like the normal widget, this command is intended for Waybar and always
+    // prints valid JSON with a zero exit status, including on unsupported OSes.
+    if let Some(Command::System) = &cli.command {
+        print!("{}", ai_usagebar::system::waybar_output().to_json_line());
+        return;
+    }
     if let Some(Command::Auth { provider }) = &cli.command {
         let rt = match tokio::runtime::Builder::new_current_thread()
             .enable_all()

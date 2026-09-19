@@ -42,6 +42,7 @@ pub mod pango;
 pub mod report;
 pub mod safe_storage;
 pub mod supergrok;
+pub mod system;
 pub mod theme;
 pub mod tooltip;
 pub mod tui;

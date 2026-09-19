@@ -9,6 +9,16 @@ Each release is also published at
 
 ## [Unreleased]
 
+### Added
+
+- OpenRouter views now include the top ten models over the latest seven
+  complete UTC days, with token volume and current input/output prices per
+  million tokens. The widget tooltip, TUI, aggregate JSON report, and report-
+  backed desktop panels share the same cached data. The GNOME OpenRouter
+  dropdown lists those ten models with their input/output prices directly
+  below the balance header. Leaderboard or model-
+  catalog failures remain optional and never hide the existing balance data.
+
 ## [1.7.0] — 2026-08-25
 
 ### Added

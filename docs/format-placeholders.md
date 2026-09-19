@@ -96,6 +96,10 @@ uses elapsed `0` and the neutral `→` pace marker.
 `{or_consumed_pct}`, `{or_free_tier}`, `{or_limit}`,
 `{or_limit_remaining}`, `{or_balance_bar}`
 
+The weekly leaderboard exposes `{or_top_1_model}`, `{or_top_1_tokens}`, and
+`{or_top_1_price}` through the corresponding `or_top_10_*` placeholders.
+Prices are current input/output USD rates per million tokens.
+
 ## DeepSeek
 
 `{ds_balance}`, `{ds_granted}`, `{ds_topped_up}`, `{ds_available}`

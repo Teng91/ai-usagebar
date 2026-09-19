@@ -19,7 +19,7 @@ pub const DEFAULT_FORMAT: &str = "${or_balance} · ${or_used_today}";
 
 /// Build the placeholder map for the OpenRouter snapshot.
 pub fn build_placeholders(snap: &OpenRouterSnapshot) -> HashMap<&'static str, String> {
-    placeholders(vec![
+    let mut values = placeholders(vec![
         ("icon", "󱙺".to_string()),
         ("vendor_short", "opr".to_string()),
         // Cross-vendor aliases — for OpenRouter the "session" concept maps
@@ -51,7 +51,36 @@ pub fn build_placeholders(snap: &OpenRouterSnapshot) -> HashMap<&'static str, St
                 .map(usd)
                 .unwrap_or_else(|| "unlimited".into()),
         ),
-    ])
+    ]);
+    const RANK_KEYS: [[&str; 3]; 10] = [
+        ["or_top_1_model", "or_top_1_tokens", "or_top_1_price"],
+        ["or_top_2_model", "or_top_2_tokens", "or_top_2_price"],
+        ["or_top_3_model", "or_top_3_tokens", "or_top_3_price"],
+        ["or_top_4_model", "or_top_4_tokens", "or_top_4_price"],
+        ["or_top_5_model", "or_top_5_tokens", "or_top_5_price"],
+        ["or_top_6_model", "or_top_6_tokens", "or_top_6_price"],
+        ["or_top_7_model", "or_top_7_tokens", "or_top_7_price"],
+        ["or_top_8_model", "or_top_8_tokens", "or_top_8_price"],
+        ["or_top_9_model", "or_top_9_tokens", "or_top_9_price"],
+        ["or_top_10_model", "or_top_10_tokens", "or_top_10_price"],
+    ];
+    for (index, keys) in RANK_KEYS.into_iter().enumerate() {
+        let (id, usage, price) = snap
+            .weekly_leaderboard
+            .get(index)
+            .map(|model| {
+                (
+                    model.name.clone(),
+                    compact_tokens(model.total_tokens),
+                    model_price(&model.model_id, model.prompt_price, model.completion_price),
+                )
+            })
+            .unwrap_or_default();
+        values.insert(keys[0], id);
+        values.insert(keys[1], usage);
+        values.insert(keys[2], price);
+    }
+    values
 }
 
 /// Compose the full Waybar output for an OpenRouter snapshot.
@@ -75,7 +104,20 @@ pub fn render(
     // Pango markup, and the label is API-controlled — escape it here, its only
     // markup insertion point. The default tooltip escapes the raw snapshot
     // itself, and or_balance_bar is markup we emit, so neither is touched.
-    for key in ["plan", "or_label"] {
+    for key in [
+        "plan",
+        "or_label",
+        "or_top_1_model",
+        "or_top_2_model",
+        "or_top_3_model",
+        "or_top_4_model",
+        "or_top_5_model",
+        "or_top_6_model",
+        "or_top_7_model",
+        "or_top_8_model",
+        "or_top_9_model",
+        "or_top_10_model",
+    ] {
         if let Some(value) = values.get_mut(key) {
             *value = escape(value);
         }
@@ -182,6 +224,37 @@ fn render_tooltip(
         )));
     }
 
+    if !snap.weekly_leaderboard.is_empty() {
+        lines.push(TooltipLine::Body("".into()));
+        lines.push(TooltipLine::Body(format!(
+            " <span foreground='{fg}'>  󰕇  OpenRouter weekly top models</span>"
+        )));
+        for model in &snap.weekly_leaderboard {
+            lines.push(TooltipLine::Body(format!(
+                " <span foreground='{dim}'>  #{rank} {name} · {tokens} · {price}</span>",
+                rank = model.rank,
+                name = escape(&model.name),
+                tokens = compact_tokens(model.total_tokens),
+                price = escape(&model_price(
+                    &model.model_id,
+                    model.prompt_price,
+                    model.completion_price,
+                )),
+            )));
+        }
+        let as_of = snap
+            .leaderboard_as_of
+            .as_deref()
+            .map(|v| format!(", as of {}", escape(v)))
+            .unwrap_or_default();
+        lines.push(TooltipLine::Body(format!(
+            " <span foreground='{dim}'>     Source: OpenRouter (openrouter.ai/rankings){as_of}</span>"
+        )));
+        lines.push(TooltipLine::Body(format!(
+            " <span foreground='{dim}'>     Licensed under CC BY 4.0 · prices per 1M tokens</span>"
+        )));
+    }
+
     let tier_label = if snap.is_free_tier {
         "free tier"
     } else {
@@ -221,6 +294,50 @@ fn render_tooltip(
     render_bordered(&lines, theme)
 }
 
+pub(crate) fn compact_tokens(tokens: u64) -> String {
+    const UNITS: &[(u64, &str)] = &[
+        (1_000_000_000_000, "T"),
+        (1_000_000_000, "B"),
+        (1_000_000, "M"),
+    ];
+    for (scale, suffix) in UNITS {
+        if tokens >= *scale {
+            let value = tokens as f64 / *scale as f64;
+            return if value >= 100.0 {
+                format!("{value:.0}{suffix}")
+            } else {
+                format!("{value:.1}{suffix}")
+            };
+        }
+    }
+    tokens.to_string()
+}
+
+pub(crate) fn model_price(model_id: &str, prompt: Option<f64>, completion: Option<f64>) -> String {
+    if model_id.ends_with(":free") || matches!((prompt, completion), (Some(0.0), Some(0.0))) {
+        return "free".into();
+    }
+    match (prompt, completion) {
+        (Some(input), Some(output)) => format!(
+            "{} / {}",
+            price_per_million(input),
+            price_per_million(output)
+        ),
+        _ => "price unavailable".into(),
+    }
+}
+
+fn price_per_million(per_token: f64) -> String {
+    let price = per_token * 1_000_000.0;
+    if price < 0.01 {
+        format!("${price:.4}")
+    } else if price < 0.1 {
+        format!("${price:.3}")
+    } else {
+        format!("${price:.2}")
+    }
+}
+
 impl From<FetchOutcome> for VendorOutcome {
     fn from(o: FetchOutcome) -> Self {
         Self {
@@ -235,7 +352,7 @@ impl From<FetchOutcome> for VendorOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::usage::OpenRouterSnapshot;
+    use crate::usage::{OpenRouterModelRank, OpenRouterSnapshot};
 
     fn sample_snap() -> OpenRouterSnapshot {
         OpenRouterSnapshot {
@@ -248,6 +365,8 @@ mod tests {
             is_free_tier: false,
             limit: Some(50.0),
             limit_remaining: Some(24.5),
+            weekly_leaderboard: Vec::new(),
+            leaderboard_as_of: None,
         }
     }
 
@@ -331,6 +450,42 @@ mod tests {
         assert!(out.tooltip.contains("paid tier"));
         assert!(out.tooltip.contains("Per-key limit"));
         assert!(out.tooltip.contains("$24.50 of $50.00"));
+    }
+
+    #[test]
+    fn tooltip_lists_weekly_models_prices_and_attribution_safely() {
+        let mut snap = sample_snap();
+        snap.weekly_leaderboard.push(OpenRouterModelRank {
+            rank: 1,
+            model_id: "acme/alpha".into(),
+            name: "Alpha <fast>".into(),
+            total_tokens: 1_250_000_000,
+            prompt_price: Some(0.0000015),
+            completion_price: Some(0.000006),
+        });
+        snap.leaderboard_as_of = Some("2026-09-19T01:00:00Z".into());
+        let outcome = sample_outcome(snap.clone());
+        let out = render(&outcome, &snap, &Theme::default(), &opts(), Utc::now());
+
+        assert!(out.tooltip.contains("#1 Alpha &lt;fast&gt; · 1.2B"));
+        assert!(out.tooltip.contains("$1.50 / $6.00"));
+        assert!(out.tooltip.contains("Source: OpenRouter"));
+        assert!(out.tooltip.contains("Licensed under CC BY 4.0"));
+        assert!(!out.tooltip.contains("Alpha <fast>"));
+    }
+
+    #[test]
+    fn free_models_use_a_human_label_instead_of_zero_or_unavailable_prices() {
+        assert_eq!(model_price("deepseek/model:free", None, None), "free");
+        assert_eq!(model_price("deepseek/model", Some(0.0), Some(0.0)), "free");
+        assert_eq!(
+            model_price("deepseek/model", None, None),
+            "price unavailable"
+        );
+        assert_eq!(
+            model_price("deepseek/model", Some(0.00000004752), Some(0.00000014256)),
+            "$0.048 / $0.14"
+        );
     }
 
     /// Reported as #118: an account that never bought credits but ran up usage

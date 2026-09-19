@@ -19,7 +19,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {barMarkup, colorForPct, field, FIELD, FORMAT, hasUsageWindows, integer,
     isGrouped, isStaleFormatOutput, markerElapsed, plainTextFromPango,
-    splitFormatOutput} from './marker-logic.js';
+    OPENROUTER_RANK_FIELDS, splitFormatOutput} from './marker-logic.js';
 
 const ROLE = 'ai-usagebar';
 
@@ -187,6 +187,12 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             this._addRow('extra', '額外使用量');
         }
 
+        if (this._fixedVendor === 'openrouter') {
+            this._addHeading('每週熱門模型');
+            for (let rank = 1; rank <= 10; rank++)
+                this._addRankingRow(rank);
+        }
+
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         const refreshItem = new PopupMenu.PopupMenuItem('立即更新');
@@ -234,6 +240,21 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(item);
 
         this._rows[key] = {item, nameL, valL, barL, resetL};
+    }
+
+    // Compact leaderboard row: rank + model on the left, per-million-token
+    // input/output prices on the right. No token-volume column by design.
+    _addRankingRow(rank) {
+        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        const row = new St.BoxLayout({x_expand: true, style_class: 'aiub-row'});
+        const nameL = new St.Label({x_expand: true, style_class: 'aiub-row-name'});
+        const priceL = new St.Label({style_class: 'aiub-row-val'});
+        row.add_child(nameL);
+        row.add_child(priceL);
+        item.add_child(row);
+        item.visible = false;
+        this.menu.addMenuItem(item);
+        this._rows[`orRank${rank}`] = {item, nameL, priceL};
     }
 
     _colors() {
@@ -386,6 +407,11 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             plan: field(f[FIELD.plan]),
             stale: isStaleFormatOutput(f[FIELD.sentinel]),
             orBalance: field(f[FIELD.orBalance]),
+            rankings: OPENROUTER_RANK_FIELDS.map(([modelIndex, priceIndex], index) => ({
+                rank: index + 1,
+                model: field(f[modelIndex]),
+                price: field(f[priceIndex]),
+            })).filter(row => row.model),
             hasUsageWindows: hasUsageWindows(f[FIELD.vendorShort]),
             grouped: isGrouped(f[FIELD.sessionModel]),
             session: {pct: integer(f[FIELD.sessionPct]), reset: field(f[FIELD.sessionReset]),
@@ -534,6 +560,19 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             this._rows.extra.nameL.text = '額外使用量';
             upd('extra', d.extra.pct, `${d.extra.spent} / ${d.extra.limit}`, null,
                 d.extra.pct != null && !!d.extra.spent && !!d.extra.limit, null); // $ budget → no meta
+        }
+
+
+        if (this._fixedVendor === 'openrouter') {
+            for (let rank = 1; rank <= 10; rank++) {
+                const row = this._rows[`orRank${rank}`];
+                const model = d.rankings.find(value => value.rank === rank);
+                row.item.visible = !!model;
+                if (model) {
+                    row.nameL.text = `#${rank}  ${model.model}`;
+                    row.priceL.text = model.price || '價格未提供';
+                }
+            }
         }
     }
 

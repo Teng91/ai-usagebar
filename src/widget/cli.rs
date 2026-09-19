@@ -137,6 +137,9 @@ pub struct Cli {
 
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum Command {
+    /// Current CPU and memory use as a Waybar-compatible JSON module (Linux).
+    System,
+
     /// Manage named Claude (Anthropic) accounts.
     Account {
         #[command(subcommand)]

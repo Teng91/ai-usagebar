@@ -643,6 +643,39 @@ fn openrouter_sections(s: &crate::usage::OpenRouterSnapshot) -> SectionBuilder {
             "paid tier".into()
         }],
     });
+    if !s.weekly_leaderboard.is_empty() {
+        v.push(Section::Spacer);
+        v.push(Section::Block {
+            label: "OpenRouter weekly top models".into(),
+            body: s
+                .weekly_leaderboard
+                .iter()
+                .map(|model| {
+                    format!(
+                        "#{} {} · {} · {}",
+                        model.rank,
+                        model.name,
+                        crate::openrouter::vendor::compact_tokens(model.total_tokens),
+                        crate::openrouter::vendor::model_price(
+                            &model.model_id,
+                            model.prompt_price,
+                            model.completion_price
+                        )
+                    )
+                })
+                .chain(std::iter::once(format!(
+                    "Source: OpenRouter (openrouter.ai/rankings){}",
+                    s.leaderboard_as_of
+                        .as_deref()
+                        .map(|v| format!(", as of {v}"))
+                        .unwrap_or_default()
+                )))
+                .chain(std::iter::once(
+                    "Licensed under CC BY 4.0 · prices per 1M tokens".into(),
+                ))
+                .collect(),
+        });
+    }
     v
 }
 
@@ -1452,6 +1485,8 @@ mod tests {
             is_free_tier: false,
             limit: None,
             limit_remaining: None,
+            weekly_leaderboard: Vec::new(),
+            leaderboard_as_of: None,
         };
         let sections = sections_for(&ready(VendorSnapshot::Openrouter(snap)), now(), 5);
         assert!(matches!(sections[0], Section::Title { .. }));
@@ -1482,6 +1517,8 @@ mod tests {
             is_free_tier: false,
             limit: None,
             limit_remaining: None,
+            weekly_leaderboard: Vec::new(),
+            leaderboard_as_of: None,
         };
         let sections = sections_for(&ready(VendorSnapshot::Openrouter(snap.clone())), now(), 5);
         let metric = sections

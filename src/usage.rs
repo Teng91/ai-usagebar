@@ -582,7 +582,25 @@ pub struct OpenRouterSnapshot {
     pub is_free_tier: bool,
     pub limit: Option<f64>,
     pub limit_remaining: Option<f64>,
+    /// Top models over the most recent seven complete UTC days. Empty when
+    /// OpenRouter's optional public-data endpoints are unavailable.
+    pub weekly_leaderboard: Vec<OpenRouterModelRank>,
+    pub leaderboard_as_of: Option<String>,
 }
+
+/// One row from OpenRouter's weekly token-volume leaderboard. Prices are USD
+/// per token on the wire and are kept that way so renderers can choose units.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OpenRouterModelRank {
+    pub rank: u16,
+    pub model_id: String,
+    pub name: String,
+    pub total_tokens: u64,
+    pub prompt_price: Option<f64>,
+    pub completion_price: Option<f64>,
+}
+
+impl Eq for OpenRouterModelRank {}
 
 impl Eq for OpenRouterSnapshot {}
 
