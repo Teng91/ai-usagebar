@@ -95,14 +95,29 @@ pub struct ModelEndpoint {
     pub pricing: ModelPricing,
 }
 
-pub fn lowest_endpoint_prices(data: &ModelEndpointsData) -> (Option<f64>, Option<f64>) {
-    let lowest = |price: fn(&ModelPricing) -> Option<f64>| {
-        data.endpoints
-            .iter()
-            .filter_map(|endpoint| price(&endpoint.pricing))
-            .min_by(f64::total_cmp)
-    };
-    (lowest(|p| p.prompt), lowest(|p| p.completion))
+pub fn floor_endpoint_prices(data: &ModelEndpointsData) -> (Option<f64>, Option<f64>) {
+    // `:floor` routes one request to one endpoint; it cannot combine one
+    // provider's prompt price with another provider's completion price. The
+    // endpoint listing and OpenRouter's provider table are cheapest-first by
+    // prompt price (completion breaks ties), so keep the selected row intact.
+    data.endpoints
+        .iter()
+        .filter(|endpoint| endpoint.pricing.prompt.is_some())
+        .min_by(|a, b| {
+            a.pricing
+                .prompt
+                .unwrap()
+                .total_cmp(&b.pricing.prompt.unwrap())
+                .then_with(|| match (a.pricing.completion, b.pricing.completion) {
+                    (Some(a), Some(b)) => a.total_cmp(&b),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                })
+        })
+        .map_or((None, None), |endpoint| {
+            (endpoint.pricing.prompt, endpoint.pricing.completion)
+        })
 }
 
 fn checked_finite<E: serde::de::Error>(value: f64) -> Result<f64, E> {
@@ -445,19 +460,19 @@ mod tests {
     }
 
     #[test]
-    fn floor_prices_take_the_lowest_value_across_provider_endpoints() {
+    fn floor_prices_keep_prompt_and_completion_from_the_same_endpoint() {
         let envelope: ModelEndpointsEnvelope = serde_json::from_str(
             r#"{"data":{"endpoints":[
-                {"pricing":{"prompt":"0.00000006","completion":"0.00000018"}},
-                {"pricing":{"prompt":"0.00000004752","completion":"0.00000014256"}},
-                {"pricing":{"prompt":"0.00000004796","completion":"0.00000014388"}}
+                {"pricing":{"prompt":"0.00000012","completion":"0.00000048"}},
+                {"pricing":{"prompt":"0.00000013","completion":"0.00000052"}},
+                {"pricing":{"prompt":"0.00000014","completion":"0.00000042"}}
             ]}}"#,
         )
         .unwrap();
 
         assert_eq!(
-            lowest_endpoint_prices(&envelope.data),
-            (Some(0.00000004752), Some(0.00000014256))
+            floor_endpoint_prices(&envelope.data),
+            (Some(0.00000012), Some(0.00000048))
         );
     }
 }

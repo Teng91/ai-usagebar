@@ -21,6 +21,24 @@
     font-weight: bold;
 }
 
+/* Give leaderboard entries two stable columns.  The wider row prevents long
+ * canonical model names from running into the price, while the fixed price
+ * column keeps every input/output pair on the same vertical guide. */
+.aiub-ranking-row {
+    min-width: 420px;
+    spacing: 16px;
+}
+
+.aiub-ranking-name {
+    min-width: 240px;
+}
+
+.aiub-ranking-price {
+    min-width: 132px;
+    text-align: right;
+    font-feature-settings: "tnum";
+}
+
 .aiub-row-bar {
     font-family: monospace;
 }

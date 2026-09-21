@@ -246,9 +246,17 @@ class AiUsageBarIndicator extends PanelMenu.Button {
     // input/output prices on the right. No token-volume column by design.
     _addRankingRow(rank) {
         const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
-        const row = new St.BoxLayout({x_expand: true, style_class: 'aiub-row'});
-        const nameL = new St.Label({x_expand: true, style_class: 'aiub-row-name'});
-        const priceL = new St.Label({style_class: 'aiub-row-val'});
+        const row = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'aiub-row aiub-ranking-row',
+        });
+        const nameL = new St.Label({
+            x_expand: true,
+            style_class: 'aiub-row-name aiub-ranking-name',
+        });
+        const priceL = new St.Label({
+            style_class: 'aiub-row-val aiub-ranking-price',
+        });
         row.add_child(nameL);
         row.add_child(priceL);
         item.add_child(row);

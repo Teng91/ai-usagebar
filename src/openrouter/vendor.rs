@@ -329,12 +329,28 @@ pub(crate) fn model_price(model_id: &str, prompt: Option<f64>, completion: Optio
 
 fn price_per_million(per_token: f64) -> String {
     let price = per_token * 1_000_000.0;
-    if price < 0.01 {
-        format!("${price:.4}")
+    let precision = if price < 0.01 {
+        4
     } else if price < 0.1 {
-        format!("${price:.3}")
+        3
     } else {
-        format!("${price:.2}")
+        3
+    };
+    let formatted = format!("{price:.precision$}");
+    let trimmed = formatted
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string();
+    let decimals = trimmed.split_once('.').map_or(0, |(_, tail)| tail.len());
+
+    if decimals < 2 {
+        format!(
+            "${trimmed}{}{}",
+            if decimals == 0 { "." } else { "" },
+            "0".repeat(2 - decimals)
+        )
+    } else {
+        format!("${trimmed}")
     }
 }
 
@@ -484,7 +500,15 @@ mod tests {
         );
         assert_eq!(
             model_price("deepseek/model", Some(0.00000004752), Some(0.00000014256)),
-            "$0.048 / $0.14"
+            "$0.048 / $0.143"
+        );
+        assert_eq!(
+            model_price("xiaomi/mimo-v2.5", Some(0.000000119), Some(0.000000238)),
+            "$0.119 / $0.238"
+        );
+        assert_eq!(
+            model_price("example/model", Some(0.00000012), Some(0.0000001)),
+            "$0.12 / $0.10"
         );
     }
 

@@ -9,7 +9,7 @@ use crate::usage::OpenRouterSnapshot;
 
 use super::types::{
     CreditsData, KeyData, ModelData, ModelEndpointsEnvelope, OrEnvelope, RankingsEnvelope, combine,
-    lowest_endpoint_prices, weekly_leaderboard,
+    floor_endpoint_prices, weekly_leaderboard,
 };
 
 pub const BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -294,7 +294,7 @@ async fn enrich_floor_prices(
         let Ok((index, Ok(envelope))) = result else {
             continue;
         };
-        let (prompt, completion) = lowest_endpoint_prices(&envelope.data);
+        let (prompt, completion) = floor_endpoint_prices(&envelope.data);
         if prompt.is_some() {
             rows[index].prompt_price = prompt;
         }
