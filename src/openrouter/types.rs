@@ -182,24 +182,25 @@ where
         .filter(|value| value.is_finite() && *value >= 0.0))
 }
 
-/// Aggregate daily rows over the seven-day window ending at `meta.end_date`,
-/// then enrich the top rows with display names and current model pricing.
-pub fn weekly_leaderboard(
-    rankings: RankingsEnvelope,
-    models: Vec<ModelData>,
+/// Aggregate daily rows over a trailing window ending at `meta.end_date`, then
+/// enrich the top rows with display names and current model pricing.
+pub fn leaderboard(
+    rankings: &RankingsEnvelope,
+    models: &[ModelData],
+    days: i64,
     limit: usize,
 ) -> Vec<OpenRouterModelRank> {
     let Ok(end) = chrono::NaiveDate::parse_from_str(&rankings.meta.end_date, "%Y-%m-%d") else {
         return Vec::new();
     };
-    let start = end - chrono::Duration::days(6);
+    let start = end - chrono::Duration::days(days.saturating_sub(1));
     let mut totals: HashMap<String, u64> = HashMap::new();
-    for row in rankings.data {
+    for row in &rankings.data {
         let Ok(date) = chrono::NaiveDate::parse_from_str(&row.date, "%Y-%m-%d") else {
             continue;
         };
         if row.model_permaslug != "other" && (start..=end).contains(&date) {
-            let total = totals.entry(row.model_permaslug).or_default();
+            let total = totals.entry(row.model_permaslug.clone()).or_default();
             *total = total.saturating_add(row.total_tokens);
         }
     }
@@ -208,7 +209,7 @@ pub fn weekly_leaderboard(
 
     let mut model_by_slug = HashMap::new();
     for model in models {
-        model_by_slug.insert(model.id.clone(), model.clone());
+        model_by_slug.insert(model.id.clone(), model);
         if !model.canonical_slug.is_empty() {
             // Several variants share the same canonical slug. Preserve the
             // variant suffix in the lookup key so `:free`/`:batch` can never
@@ -253,6 +254,14 @@ pub fn weekly_leaderboard(
         .collect()
 }
 
+pub fn weekly_leaderboard(
+    rankings: RankingsEnvelope,
+    models: Vec<ModelData>,
+    limit: usize,
+) -> Vec<OpenRouterModelRank> {
+    leaderboard(&rankings, &models, 7, limit)
+}
+
 /// Combine the two endpoint responses into the canonical snapshot.
 pub fn combine(credits: CreditsData, key: KeyData) -> OpenRouterSnapshot {
     let label = if key.label.is_empty() {
@@ -270,7 +279,9 @@ pub fn combine(credits: CreditsData, key: KeyData) -> OpenRouterSnapshot {
         is_free_tier: key.is_free_tier,
         limit: key.limit,
         limit_remaining: key.limit_remaining,
+        daily_leaderboard: Vec::new(),
         weekly_leaderboard: Vec::new(),
+        monthly_leaderboard: Vec::new(),
         leaderboard_as_of: None,
     }
 }
@@ -378,7 +389,9 @@ mod tests {
             is_free_tier: true,
             limit: None,
             limit_remaining: None,
+            daily_leaderboard: Vec::new(),
             weekly_leaderboard: Vec::new(),
+            monthly_leaderboard: Vec::new(),
             leaderboard_as_of: None,
         };
         assert_eq!(s.consumed_pct(), 0);

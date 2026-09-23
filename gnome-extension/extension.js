@@ -19,7 +19,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {barMarkup, colorForPct, field, FIELD, FORMAT, hasUsageWindows, integer,
     isGrouped, isStaleFormatOutput, markerElapsed, plainTextFromPango,
-    OPENROUTER_RANK_FIELDS, splitFormatOutput} from './marker-logic.js';
+    OPENROUTER_RANK_FIELDS, parseOpenRouterRankings, splitFormatOutput} from './marker-logic.js';
 
 const ROLE = 'ai-usagebar';
 
@@ -140,6 +140,8 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             'show-weekly', 'show-extra', 'color-low', 'color-mid',
             'color-high', 'color-critical', 'color-empty',
         ];
+        if (this._fixedVendor === 'openrouter')
+            viewKeys.push('leaderboard-period');
         this._viewIds = viewKeys.map(k =>
             this._settings.connect(`changed::${k}`, () => this._render()));
 
@@ -188,7 +190,7 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         }
 
         if (this._fixedVendor === 'openrouter') {
-            this._addHeading('每週熱門模型');
+            this._addRankingPeriodMenu();
             for (let rank = 1; rank <= 10; rank++)
                 this._addRankingRow(rank);
         }
@@ -213,6 +215,36 @@ class AiUsageBarIndicator extends PanelMenu.Button {
         const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
         item.add_child(new St.Label({text, x_expand: true, style_class: 'aiub-header'}));
         this.menu.addMenuItem(item);
+    }
+
+    _addRankingPeriodMenu() {
+        const labels = {today: 'Today', week: 'This Week', month: 'This Month'};
+        this._rankingPeriodItem = new PopupMenu.PopupSubMenuMenuItem('This Week');
+        // PopupMenuBase normally propagates a child activation all the way to
+        // the top-level panel menu and closes it. Period selection is a view
+        // switch, so collapse only this inline submenu and leave the ranking
+        // popup open while the rows update below it.
+        this._rankingPeriodItem.menu.itemActivated = () =>
+            this._rankingPeriodItem.menu.close();
+        this._rankingPeriodOptions = {};
+        for (const [period, label] of Object.entries(labels)) {
+            const option = new PopupMenu.PopupMenuItem(label);
+            option.connect('activate', () => this._settings.set_string('leaderboard-period', period));
+            this._rankingPeriodItem.menu.addMenuItem(option);
+            this._rankingPeriodOptions[period] = option;
+        }
+        this.menu.addMenuItem(this._rankingPeriodItem);
+        this._updateRankingPeriodMenu();
+    }
+
+    _updateRankingPeriodMenu() {
+        if (!this._rankingPeriodItem)
+            return;
+        const period = this._settings.get_string('leaderboard-period');
+        const labels = {today: 'Today', week: 'This Week', month: 'This Month'};
+        this._rankingPeriodItem.label.text = `熱門模型 · ${labels[period] ?? labels.week}`;
+        for (const [key, option] of Object.entries(this._rankingPeriodOptions ?? {}))
+            option.setOrnament(key === period ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
     }
 
     // A native, font-independent row: [name ........ value] / bar / reset.
@@ -411,15 +443,17 @@ class AiUsageBarIndicator extends PanelMenu.Button {
             this._label.clutter_text.set_markup(`<span foreground="${FG}">${esc(raw) || '…'}</span>`);
             return;
         }
+        const weeklyRankings = OPENROUTER_RANK_FIELDS.map(([modelIndex, priceIndex], index) => ({
+            rank: index + 1,
+            model: field(f[modelIndex]),
+            price: field(f[priceIndex]),
+        })).filter(row => row.model);
         this._data = {
             plan: field(f[FIELD.plan]),
             stale: isStaleFormatOutput(f[FIELD.sentinel]),
             orBalance: field(f[FIELD.orBalance]),
-            rankings: OPENROUTER_RANK_FIELDS.map(([modelIndex, priceIndex], index) => ({
-                rank: index + 1,
-                model: field(f[modelIndex]),
-                price: field(f[priceIndex]),
-            })).filter(row => row.model),
+            rankings: weeklyRankings,
+            rankingsByPeriod: parseOpenRouterRankings(f[FIELD.orRankingsJson], weeklyRankings),
             hasUsageWindows: hasUsageWindows(f[FIELD.vendorShort]),
             grouped: isGrouped(f[FIELD.sessionModel]),
             session: {pct: integer(f[FIELD.sessionPct]), reset: field(f[FIELD.sessionReset]),
@@ -572,9 +606,12 @@ class AiUsageBarIndicator extends PanelMenu.Button {
 
 
         if (this._fixedVendor === 'openrouter') {
+            this._updateRankingPeriodMenu();
+            const period = this._settings.get_string('leaderboard-period');
+            const rankings = d.rankingsByPeriod?.[period] ?? d.rankings;
             for (let rank = 1; rank <= 10; rank++) {
                 const row = this._rows[`orRank${rank}`];
-                const model = d.rankings.find(value => value.rank === rank);
+                const model = rankings.find(value => value.rank === rank);
                 row.item.visible = !!model;
                 if (model) {
                     row.nameL.text = `#${rank}  ${model.model}`;

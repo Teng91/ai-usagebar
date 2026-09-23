@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {barMarkup, colorForDelta, disambiguateTags, field, FIELD, FORMAT, hasUsageWindows, integer,
-    isGrouped, isStaleFormatOutput, markerElapsed, pickPool, plainTextFromPango, poolAvailable, poolTag,
+    isGrouped, isStaleFormatOutput, markerElapsed, parseOpenRouterRankings, pickPool, plainTextFromPango, poolAvailable, poolTag,
     OPENROUTER_RANK_FIELDS, selectPools, splitFormatOutput} from './marker-logic.js';
 
 const colors = {low: 'low', mid: 'mid', high: 'high', critical: 'critical', empty: 'empty'};
@@ -44,7 +44,8 @@ assert.deepEqual(formatFields, [
     '{or_top_7_model}', '{or_top_7_tokens}', '{or_top_7_price}',
     '{or_top_8_model}', '{or_top_8_tokens}', '{or_top_8_price}',
     '{or_top_9_model}', '{or_top_9_tokens}', '{or_top_9_price}',
-    '{or_top_10_model}', '{or_top_10_tokens}', '{or_top_10_price}', '__aiub_end__',
+    '{or_top_10_model}', '{or_top_10_tokens}', '{or_top_10_price}',
+    '{or_rankings_json}', '__aiub_end__',
 ]);
 assert.deepEqual(FIELD, {
     plan: 0, sessionPct: 1, sessionReset: 2, weeklyPct: 3, weeklyReset: 4,
@@ -64,13 +65,18 @@ assert.deepEqual(FIELD, {
     orTop8Model: 44, orTop8Tokens: 45, orTop8Price: 46,
     orTop9Model: 47, orTop9Tokens: 48, orTop9Price: 49,
     orTop10Model: 50, orTop10Tokens: 51, orTop10Price: 52,
-    sentinel: 53,
+    orRankingsJson: 53,
+    sentinel: 54,
 });
 assert.equal(OPENROUTER_RANK_FIELDS.length, 10);
 assert.deepEqual(OPENROUTER_RANK_FIELDS[0], [FIELD.orTop1Model, FIELD.orTop1Price]);
 assert.deepEqual(OPENROUTER_RANK_FIELDS[9], [FIELD.orTop10Model, FIELD.orTop10Price]);
 // Appended fields must not disturb the indices an older binary already fills.
 assert.equal(FIELD.vendorShort, 16);
+assert.deepEqual(parseOpenRouterRankings(
+    '{"today":[{"rank":1,"model":"A","price":"$1.00 / $2.00"}],"week":[],"month":[]}',
+).today[0], {rank: 1, model: 'A', price: '$1.00 / $2.00'});
+assert.deepEqual(parseOpenRouterRankings('{or_rankings_json}', [{rank: 1}]).week, [{rank: 1}]);
 // An older binary echoes unknown placeholders back; field() must discard them
 // so the extra row falls back to its spent/limit money-budget shape.
 assert.equal(field('{extra_model}'), '');

@@ -51,6 +51,15 @@ pub fn build_placeholders(snap: &OpenRouterSnapshot) -> HashMap<&'static str, St
                 .map(usd)
                 .unwrap_or_else(|| "unlimited".into()),
         ),
+        (
+            "or_rankings_json",
+            serde_json::to_string(&serde_json::json!({
+                "today": ranking_json(&snap.daily_leaderboard),
+                "week": ranking_json(&snap.weekly_leaderboard),
+                "month": ranking_json(&snap.monthly_leaderboard),
+            }))
+            .unwrap_or_default(),
+        ),
     ]);
     const RANK_KEYS: [[&str; 3]; 10] = [
         ["or_top_1_model", "or_top_1_tokens", "or_top_1_price"],
@@ -81,6 +90,22 @@ pub fn build_placeholders(snap: &OpenRouterSnapshot) -> HashMap<&'static str, St
         values.insert(keys[2], price);
     }
     values
+}
+
+fn ranking_json(rows: &[crate::usage::OpenRouterModelRank]) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|model| {
+            serde_json::json!({
+                "rank": model.rank,
+                "model": model.name,
+                "price": model_price(
+                    &model.model_id,
+                    model.prompt_price,
+                    model.completion_price,
+                ),
+            })
+        })
+        .collect()
 }
 
 /// Compose the full Waybar output for an OpenRouter snapshot.
@@ -381,7 +406,9 @@ mod tests {
             is_free_tier: false,
             limit: Some(50.0),
             limit_remaining: Some(24.5),
+            daily_leaderboard: Vec::new(),
             weekly_leaderboard: Vec::new(),
+            monthly_leaderboard: Vec::new(),
             leaderboard_as_of: None,
         }
     }

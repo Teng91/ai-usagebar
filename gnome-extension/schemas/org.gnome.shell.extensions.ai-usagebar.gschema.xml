@@ -35,6 +35,16 @@
       <summary>Show the weekly bar</summary>
     </key>
 
+    <key name="leaderboard-period" type="s">
+      <choices>
+        <choice value="today"/>
+        <choice value="week"/>
+        <choice value="month"/>
+      </choices>
+      <default>'week'</default>
+      <summary>OpenRouter leaderboard period shown in the dropdown</summary>
+    </key>
+
     <key name="panel-box" type="s">
       <choices>
         <choice value="left"/>

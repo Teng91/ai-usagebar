@@ -582,9 +582,13 @@ pub struct OpenRouterSnapshot {
     pub is_free_tier: bool,
     pub limit: Option<f64>,
     pub limit_remaining: Option<f64>,
-    /// Top models over the most recent seven complete UTC days. Empty when
+    /// Top models over the most recent complete UTC day. Empty when
     /// OpenRouter's optional public-data endpoints are unavailable.
+    pub daily_leaderboard: Vec<OpenRouterModelRank>,
+    /// Top models over the most recent seven complete UTC days.
     pub weekly_leaderboard: Vec<OpenRouterModelRank>,
+    /// Top models over the most recent thirty complete UTC days.
+    pub monthly_leaderboard: Vec<OpenRouterModelRank>,
     pub leaderboard_as_of: Option<String>,
 }
 

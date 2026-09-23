@@ -1485,7 +1485,9 @@ mod tests {
             is_free_tier: false,
             limit: None,
             limit_remaining: None,
+            daily_leaderboard: Vec::new(),
             weekly_leaderboard: Vec::new(),
+            monthly_leaderboard: Vec::new(),
             leaderboard_as_of: None,
         };
         let sections = sections_for(&ready(VendorSnapshot::Openrouter(snap)), now(), 5);
@@ -1517,7 +1519,9 @@ mod tests {
             is_free_tier: false,
             limit: None,
             limit_remaining: None,
+            daily_leaderboard: Vec::new(),
             weekly_leaderboard: Vec::new(),
+            monthly_leaderboard: Vec::new(),
             leaderboard_as_of: None,
         };
         let sections = sections_for(&ready(VendorSnapshot::Openrouter(snap.clone())), now(), 5);

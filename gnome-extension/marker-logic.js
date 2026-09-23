@@ -21,7 +21,8 @@ export const FORMAT = '{plan};;{session_pct};;{session_reset};;{weekly_pct};;{we
     '{or_top_7_model};;{or_top_7_tokens};;{or_top_7_price};;' +
     '{or_top_8_model};;{or_top_8_tokens};;{or_top_8_price};;' +
     '{or_top_9_model};;{or_top_9_tokens};;{or_top_9_price};;' +
-    '{or_top_10_model};;{or_top_10_tokens};;{or_top_10_price};;__aiub_end__';
+    '{or_top_10_model};;{or_top_10_tokens};;{or_top_10_price};;' +
+    '{or_rankings_json};;__aiub_end__';
 export const FIELD = Object.freeze({
     plan: 0, sessionPct: 1, sessionReset: 2, weeklyPct: 3, weeklyReset: 4,
     sonnetPct: 5, sonnetReset: 6, extraPct: 7, extraSpent: 8, extraLimit: 9,
@@ -40,7 +41,8 @@ export const FIELD = Object.freeze({
     orTop8Model: 44, orTop8Tokens: 45, orTop8Price: 46,
     orTop9Model: 47, orTop9Tokens: 48, orTop9Price: 49,
     orTop10Model: 50, orTop10Tokens: 51, orTop10Price: 52,
-    sentinel: 53,
+    orRankingsJson: 53,
+    sentinel: 54,
 });
 
 export const OPENROUTER_RANK_FIELDS = Object.freeze([
@@ -90,6 +92,22 @@ export function plainTextFromPango(value) {
 export function field(value) {
     const text = String(value ?? '').trim();
     return text && !/^\{[^}]+\}$/.test(text) ? text : '';
+}
+
+export function parseOpenRouterRankings(value, weeklyFallback = []) {
+    const raw = field(value);
+    if (!raw)
+        return {today: [], week: weeklyFallback, month: []};
+    try {
+        const parsed = JSON.parse(raw);
+        return {
+            today: Array.isArray(parsed.today) ? parsed.today : [],
+            week: Array.isArray(parsed.week) ? parsed.week : weeklyFallback,
+            month: Array.isArray(parsed.month) ? parsed.month : [],
+        };
+    } catch (_) {
+        return {today: [], week: weeklyFallback, month: []};
+    }
 }
 
 // Do not accept a numeric prefix: a stale suffix such as "27 ⏸" is not elapsed.

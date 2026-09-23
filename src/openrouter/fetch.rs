@@ -1,7 +1,7 @@
 //! OpenRouter fetch — combines `/api/v1/credits` and `/api/v1/key` under
 //! the shared cache + flock primitives.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use crate::cache::{Cache, MAX_STALE, acquire_lock_async};
 use crate::error::{AppError, Result};
@@ -9,7 +9,7 @@ use crate::usage::OpenRouterSnapshot;
 
 use super::types::{
     CreditsData, KeyData, ModelData, ModelEndpointsEnvelope, OrEnvelope, RankingsEnvelope, combine,
-    floor_endpoint_prices, weekly_leaderboard,
+    floor_endpoint_prices, leaderboard,
 };
 
 pub const BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -68,14 +68,37 @@ pub async fn fetch_snapshot(
             let mut snap = combine(credits, key);
             if let (Some(rankings), Some(models)) = (rankings, models) {
                 snap.leaderboard_as_of = Some(rankings.meta.as_of.clone());
-                snap.weekly_leaderboard = weekly_leaderboard(rankings, models, 10);
-                enrich_floor_prices(
-                    client,
-                    api_key,
-                    &endpoints.models,
-                    &mut snap.weekly_leaderboard,
-                )
-                .await;
+                snap.daily_leaderboard = leaderboard(&rankings, &models, 1, 10);
+                snap.weekly_leaderboard = leaderboard(&rankings, &models, 7, 10);
+                snap.monthly_leaderboard = leaderboard(&rankings, &models, 30, 10);
+
+                // The three windows overlap heavily. Fetch each model's floor
+                // endpoint once, then copy the resulting pair into every list.
+                let mut priced_rows: Vec<_> = snap
+                    .daily_leaderboard
+                    .iter()
+                    .chain(&snap.weekly_leaderboard)
+                    .chain(&snap.monthly_leaderboard)
+                    .cloned()
+                    .collect();
+                priced_rows.sort_by(|a, b| a.model_id.cmp(&b.model_id));
+                priced_rows.dedup_by(|a, b| a.model_id == b.model_id);
+                enrich_floor_prices(client, api_key, &endpoints.models, &mut priced_rows).await;
+                let prices: HashMap<_, _> = priced_rows
+                    .into_iter()
+                    .map(|row| (row.model_id, (row.prompt_price, row.completion_price)))
+                    .collect();
+                for row in snap
+                    .daily_leaderboard
+                    .iter_mut()
+                    .chain(&mut snap.weekly_leaderboard)
+                    .chain(&mut snap.monthly_leaderboard)
+                {
+                    if let Some((prompt, completion)) = prices.get(&row.model_id) {
+                        row.prompt_price = *prompt;
+                        row.completion_price = *completion;
+                    }
+                }
             }
             // Serialize back to JSON for the cache.
             let cache_repr = serde_json::json!({
@@ -186,8 +209,20 @@ fn parse_cache(bytes: &[u8]) -> Result<OpenRouterSnapshot> {
             .ok_or_else(|| AppError::Schema("openrouter cache missing 'is_free_tier'".into()))?,
         limit: optional_money("limit", true)?,
         limit_remaining: optional_money("limit_remaining", false)?,
+        daily_leaderboard: s
+            .get("daily_leaderboard")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?
+            .unwrap_or_default(),
         weekly_leaderboard: s
             .get("weekly_leaderboard")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?
+            .unwrap_or_default(),
+        monthly_leaderboard: s
+            .get("monthly_leaderboard")
             .cloned()
             .map(serde_json::from_value)
             .transpose()?
@@ -210,7 +245,9 @@ fn serde_repr(snap: &OpenRouterSnapshot) -> serde_json::Value {
         "is_free_tier": snap.is_free_tier,
         "limit": snap.limit,
         "limit_remaining": snap.limit_remaining,
+        "daily_leaderboard": snap.daily_leaderboard,
         "weekly_leaderboard": snap.weekly_leaderboard,
+        "monthly_leaderboard": snap.monthly_leaderboard,
         "leaderboard_as_of": snap.leaderboard_as_of,
     })
 }
